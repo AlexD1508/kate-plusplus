@@ -254,7 +254,8 @@ DEFAULTS = {
     "theme": {"source": "auto", "accent": "", "background": "", "syntax-colors": "balanced",
               "window-colors": "match"},
     "editor": {"font": "auto", "font-size": "11", "line-spacing": "1.15", "minimap": "true",
-               "smart-highlighting": "true", "auto-save": "off", "format-on-save": "false"},
+               "ligatures": "true", "smart-highlighting": "true", "auto-save": "off",
+               "format-on-save": "false"},
 }
 
 

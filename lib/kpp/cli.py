@@ -373,18 +373,147 @@ def restore_katerc(kate, state) -> bool:
     return True
 
 
+# config/kate.ini keys that versions without per-key records never wrote: the record-less
+# fallback must not delete them (a user may have set them), it puts back their records instead
+NEWER_KATE_INI_KEYS = {("[Kate Plugins]", "katesnippetsplugin")}
+
+
 def remove_managed_katerc(kate, state=None):
     """Fallback without complete records or a backup: remove the settings older versions
     managed (their originals are unknown), and put back exactly the recorded originals of
-    keys only newer versions write: those were recorded before Kate++ first touched them."""
-    legacy = managed_keys()
+    keys only newer versions write: those were recorded before Kate++ first touched them.
+    Two exceptions: Text Font Features is only touched while it holds Kate++'s own
+    no-ligatures value (a later own value stays), and the snippet repository entry is taken
+    out by remove_snippets() (list surgery keeps repositories added since)."""
+    r = "[KTextEditor Renderer]"
+    legacy = [gk for gk in managed_keys() if gk not in NEWER_KATE_INI_KEYS]
     changes = [(g, k, "@delete") for g, k in legacy]
-    old_keys = {f"{g}\t{k}" for g, k in legacy} | {f"{UI}\tColorScheme"}   # scheme: see do_uninstall
-    for rec, old in (state or {}).get("katerc_before", {}).items():
+    special = {f"{r}\tText Font Features", f"{SNIPPETS_GROUP}\t{SNIPPETS_KEY}"}
+    old_keys = {f"{g}\t{k}" for g, k in legacy} | {f"{UI}\tColorScheme"} | special  # scheme: see do_uninstall
+    records = (state or {}).get("katerc_before", {})
+    for rec, old in records.items():
         if rec not in old_keys:
             group, key = rec.split("\t", 1)
             changes.append((group, key, "@delete" if old is None else old))
+    if core.read_rc_value(kate.katerc, r, "Text Font Features") == NO_LIGATURES:
+        recorded = records.get(f"{r}\tText Font Features")
+        changes.append((r, "Text Font Features", recorded if recorded is not None else "@delete"))
     core.merge_rc(kate.katerc, changes)
+
+
+# friendly name → (installed family names to look for, package hint)
+FONT_ALIASES = {
+    "jetbrains-mono": (("JetBrainsMono Nerd Font", "JetBrains Mono", "JetBrainsMono NF"), "ttf-jetbrains-mono-nerd"),
+    "cascadia": (("CaskaydiaCove Nerd Font", "Cascadia Code", "Cascadia Mono"), "ttf-cascadia-code-nerd"),
+    "fira": (("FiraCode Nerd Font", "Fira Code", "Fira Mono"), "ttf-firacode-nerd"),
+    "iosevka": (("Iosevka Nerd Font", "Iosevka", "Iosevka Term"), "ttf-iosevka-nerd"),
+    "maple": (("Maple Mono NF", "Maple Mono"), "maplemono-nf (AUR)"),
+}
+NO_LIGATURES = "liga=0,calt=0,dlig=0"
+
+
+def resolve_font(value):
+    """config font value → installed family name (or 'Monospace')."""
+    wanted = value.strip()
+    if wanted.lower() in ("", "auto"):
+        return core.installed_font(*FONT_ALIASES["jetbrains-mono"][0]) or "Monospace"
+    alias = FONT_ALIASES.get(wanted.lower().replace(" ", "-"))
+    if alias:
+        if not core.have("fc-list"):        # can't check what's installed: trust the alias
+            return alias[0][0]
+        found = core.installed_font(*alias[0])
+        if found:
+            return found
+        warn(f"font '{wanted}' isn't installed (Arch: sudo pacman -S {alias[1]}); using auto")
+        return resolve_font("auto")
+    found = core.installed_font(wanted)
+    if found or not core.have("fc-list"):
+        return found or wanted
+    warn(f"font '{wanted}' isn't installed; using auto")
+    return resolve_font("auto")
+
+
+SNIPPETS_GROUP, SNIPPETS_KEY = "[Snippets]", "enabledRepositories"
+
+
+def snippet_file(kate):
+    return kate.data / "ktexteditor_snippets/data/kate-plusplus.xml"
+
+
+def _enabled_repos(kate):
+    raw = core.read_rc_value(kate.katerc, SNIPPETS_GROUP, SNIPPETS_KEY) or ""
+    return [r for r in raw.split(",") if r]
+
+
+SNIPPETS_BEFORE = STATE_DIR / "snippets.before-kate-plusplus.xml"
+
+
+def _sha(path):
+    return hashlib.sha256(path.read_bytes()).hexdigest() if path.exists() else None
+
+
+def install_snippets(kate, state):
+    """Install or update the snippet pack without ever losing edits.
+
+    Kate saves edits made in its Snippets panel into this same file, so Kate++ only replaces
+    it while it still matches what Kate++ last wrote. A file that already existed before
+    Kate++ (a symlink stays a symlink) is backed up first and put back on uninstall."""
+    dst = snippet_file(kate)
+    ours = (REPO / "snippets/kate-plusplus.xml").read_text(encoding="utf-8")
+    current = _sha(dst)
+    last = state.get("snippets_sha")
+    if last is None:            # first time: remember what was there, to undo it exactly
+        state.setdefault("snippets_dir_created", not dst.parent.exists())
+        state.setdefault("snippets_before_enabled", str(dst) in _enabled_repos(kate))
+        if os.path.lexists(dst):    # even byte-identical to the pack: it's still theirs
+            SNIPPETS_BEFORE.parent.mkdir(parents=True, exist_ok=True)
+            if not os.path.lexists(SNIPPETS_BEFORE):    # someone else's file with this name
+                shutil.copy2(dst, SNIPPETS_BEFORE, follow_symlinks=False)
+            current = None                              # replace it with the pack below
+    if current is not None and last is not None and current != last:
+        info("Snippets: keeping your edited Kate++ snippet pack (not overwritten)")
+    else:
+        core.atomic_write(dst, ours, 0o644)
+        state["snippets_sha"] = _sha(dst)
+        core.save_state(state)
+    repos = _enabled_repos(kate)
+    if str(dst) not in repos:   # Kate lists checked repositories by path; keep the user's others
+        set_katerc(kate, state, [(SNIPPETS_GROUP, SNIPPETS_KEY, ",".join([*repos, str(dst)]))])
+    step("Snippets: date, datetime, todo, fixme, shebangs, lorem, md-table")
+
+
+def remove_snippets(kate, state=None):
+    """Uninstall: an untouched pack is removed, an edited one is moved to the backups folder
+    (which uninstall keeps), and a file that existed before Kate++ is put back. A file
+    Kate++ has no record of owning is left alone, with its repository entry."""
+    state = state or {}
+    dst = snippet_file(kate)
+    last = state.get("snippets_sha")
+    before = os.path.lexists(SNIPPETS_BEFORE)
+    pack_sha = hashlib.sha256((REPO / "snippets/kate-plusplus.xml").read_bytes()).hexdigest()
+    if os.path.lexists(dst) and last is None and not before and _sha(dst) != pack_sha:
+        return                              # not ours: never installed or replaced by Kate++
+    if os.path.lexists(dst) and last is not None and _sha(dst) != last:
+        BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+        kept = BACKUP_DIR / f"snippets-edited-{datetime.now():%Y%m%d-%H%M%S}.xml"
+        shutil.move(str(dst), kept)
+        info(f"Your edited snippet pack was kept: {kept}")
+    elif os.path.lexists(dst):
+        dst.unlink()
+    keep_entry = state.get("snippets_before_enabled", False)   # it was listed before Kate++
+    repos = _enabled_repos(kate)
+    if str(dst) in repos and not keep_entry:   # every path: the fallback uninstall relies on it
+        rest = [r for r in repos if r != str(dst)]
+        core.merge_rc(kate.katerc, [(SNIPPETS_GROUP, SNIPPETS_KEY, ",".join(rest) if rest else "@delete")])
+    if before:
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(SNIPPETS_BEFORE), dst)   # moves a symlink as a symlink
+    elif state.get("snippets_dir_created"):
+        for d in (dst.parent, dst.parent.parent):   # only if empty: os.rmdir refuses otherwise
+            try:
+                d.rmdir()
+            except OSError:
+                break
 
 
 UI = "[UiSettings]"
@@ -436,10 +565,7 @@ def window_colors(cfg, kate, source, theme_name, state):
 def kate_settings(cfg, kate, theme_name, state):
     settings = core.read_settings_ini(REPO / "config/kate.ini")
     r = "[KTextEditor Renderer]"
-    font = cfg.get("editor", "font")
-    if font.lower() == "auto":
-        font = core.installed_font("JetBrainsMono Nerd Font", "JetBrains Mono", "JetBrainsMono NF") \
-            or "Monospace"
+    font = resolve_font(cfg.get("editor", "font"))
     try:
         size = max(6, min(40, int(float(cfg.get("editor", "font-size")))))
         spacing = max(1.0, min(2.0, float(cfg.get("editor", "line-spacing"))))
@@ -451,6 +577,10 @@ def kate_settings(cfg, kate, theme_name, state):
         (r, "Line Height Multiplier", f"{spacing:g}"),
         ("[KTextEditor View]", "Scroll Bar MiniMap", str(cfg.flag("editor", "minimap")).lower()),
     ]
+    if not cfg.flag("editor", "ligatures"):
+        settings.append((r, "Text Font Features", NO_LIGATURES))
+    elif core.read_rc_value(kate.katerc, r, "Text Font Features") == NO_LIGATURES:
+        settings.append((r, "Text Font Features", "@delete"))   # turn our own switch back off
     if cfg.flag("editor", "smart-highlighting"):   # off: Kate's own LSP settings stay untouched
         settings += [(LSP, key, "true") for key in SMART_KEYS]
     if theme_name:
@@ -768,6 +898,7 @@ def do_apply(args, first_install=False):
     section("Kate")
     install_files(kate, state)
     language_menu(cfg, kate)
+    install_snippets(kate, state)
     setup_formatting(cfg, kate, state)
     ensure_sessions(kate)
     source = resolve_theme_source(cfg, profile)
@@ -884,7 +1015,8 @@ def do_theme(args):
 # ======================================================================= backups
 
 def _backup_sources(kate):
-    return [p for p in (kate.katerc, kate.config / "katemetainfos", kate.data / "kate") if p.exists()]
+    return [p for p in (kate.katerc, kate.config / "katemetainfos", kate.data / "kate",
+                        snippet_file(kate)) if p.exists()]
 
 
 def _fingerprint(paths):
@@ -1007,6 +1139,29 @@ def do_restore(args):
 
 # ======================================================================= doctor
 
+QT_STYLE_DIRS = (Path("/usr/lib/qt6/plugins/styles"), Path("/usr/lib64/qt6/plugins/styles"),
+                 Path("/usr/lib/x86_64-linux-gnu/qt6/plugins/styles"))
+STYLE_HINTS = {"darkly": "yay -S darkly-qt6-git  (AUR; rebuild it after Qt updates, like quickshell)"}
+
+
+def qt_style_problem():
+    """Message if the qtengine config asks for a Qt style that isn't installed, else None."""
+    if os.environ.get("QT_QPA_PLATFORMTHEME", "") != "qtengine":
+        return None
+    try:
+        style = json.loads((XDG_CONFIG / "qtengine/config.json").read_text(encoding="utf-8"))["theme"]["style"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    if not isinstance(style, str) or not style or style.lower() in ("fusion", "windows"):
+        return None
+    files = [f.name.lower() for d in QT_STYLE_DIRS if d.is_dir() for f in d.iterdir()]
+    if any(style.lower() in f for f in files):
+        return None
+    hint = STYLE_HINTS.get(style.lower(), "install that Qt style or pick another one in qtengine")
+    return (f"Qt style '{style}' is configured but not installed, so Qt apps fall back to the "
+            f"plain style. To get it: {hint}")
+
+
 def do_doctor(args):
     banner("Health check")
     ok = lambda m: print(f"  {GREEN}✓{RESET} {m}")       # noqa: E731
@@ -1056,6 +1211,9 @@ def do_doctor(args):
         meh(f"Window colours: '{cur}' is an old Kate++ scheme → kate-plusplus apply")
     else:
         ok("Window colours follow your desktop")
+    style_issue = qt_style_problem()
+    if style_issue:
+        meh(style_issue)
     if state.get("profile") == "caelestia":
         if have("caelestia"):
             ok("Caelestia CLI")
@@ -1146,6 +1304,9 @@ def do_uninstall(args):
         f.unlink()
     (XDG_DATA / "icons/hicolor/scalable/apps/kate-plusplus.svg").unlink(missing_ok=True)
     window.remove_schemes(kate)
+    # the snippet list as it is now (with repositories enabled since install): restoring
+    # settings must not roll it back; remove_snippets() then takes out only Kate++'s entry
+    repos_now = core.read_rc_value(kate.katerc, SNIPPETS_GROUP, SNIPPETS_KEY)
     if PRE_INSTALL.exists() and (args.yes or ask("Put your Kate settings back to how they were before Kate++?")):
         shutil.copy2(PRE_INSTALL, kate.katerc)
         step("Original Kate settings restored")
@@ -1157,6 +1318,8 @@ def do_uninstall(args):
         if scheme and scheme.startswith(window.PREFIX):   # its file is gone; a manual pick stays
             core.merge_rc(kate.katerc, [("[UiSettings]", "ColorScheme", "@delete")])
         step("Kate++ settings removed (no record of your earlier values was available)")
+    core.merge_rc(kate.katerc, [(SNIPPETS_GROUP, SNIPPETS_KEY, "@delete" if repos_now is None else repos_now)])
+    remove_snippets(kate, state)   # after any katerc restore, so a restored file can't re-enable it
     shutil.rmtree(STATE_DIR, ignore_errors=True)
     if BIN_LINK.is_symlink():
         BIN_LINK.unlink()

@@ -32,6 +32,15 @@ All notable changes to Kate++ are listed here. The format follows
   Kate) and, with a number, N seconds (5–3600) after your last edit. Untitled tabs stay
   stashed; a path opened before it existed is created on the first auto-save. `off`
   (default) leaves Kate's own setting alone.
+- **Font shortcuts:** `font = jetbrains-mono | cascadia | fira | iosevka | maple` (or any
+  installed family); a missing font is reported with its package and falls back to `auto`.
+- **Ligatures switch:** `ligatures = false` shows `=>`, `!=`, `->` as plain characters.
+- **Snippet pack:** `date`, `datetime`, `todo`, `fixme`, `shebang-bash`, `shebang-python`,
+  `lorem`, `md-table` (Kate's Snippets plugin is enabled for it). Edits you make to it in Kate are kept;
+  uninstall saves an edited pack to the backups folder.
+- `doctor` warns when the **qtengine** platform theme (used by Caelestia) asks for a Qt style
+  that isn't installed, e.g. Darkly, and says how to install it. Other platform themes such
+  as qt6ct aren't checked.
 - **Prettify:** <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd> formats the whole file through Kate's Format
   plugin (prettier, ruff, jq, clang-format, shfmt, …). `doctor` lists installed formatters with
   install hints.
