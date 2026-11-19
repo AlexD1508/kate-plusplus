@@ -87,13 +87,17 @@ curl -fsSL https://raw.githubusercontent.com/AlexD1508/kate-plusplus/main/instal
 That's it. Kate++ figures out your desktop, backs up your current Kate settings, sets everything up and tells you what it did. Re-running it is safe.
 
 <details>
-<summary><b>Arch / EndeavourOS (AUR)</b></summary>
+<summary><b>Arch / EndeavourOS (as a pacman package)</b></summary>
+
+The AUR package is ready and will be published once AUR registration reopens. Until then, build the same package straight from this repo:
 
 ```bash
-yay -S kate-plusplus
+git clone https://github.com/AlexD1508/kate-plusplus.git
+cd kate-plusplus/packaging/aur
+makepkg -si                  # builds and installs kate-plusplus with pacman
 kate-plusplus install        # once per user account
 ```
-Updates then come with `yay -Syu`.
+Remove it any time with `sudo pacman -R kate-plusplus` (run `kate-plusplus uninstall` first to restore your Kate setup).
 </details>
 
 <details>
