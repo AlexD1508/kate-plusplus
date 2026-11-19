@@ -21,6 +21,15 @@ All notable changes to Kate++ are listed here. The format follows
 - `source` in `config.ini` accepts **any theme by name**, including every theme that ships
   with Kate (`Catppuccin Mocha`, `Dracula`, `Nord`, …). Family names (`rose-pine`,
   `kanagawa`, `everforest`) follow your system's light/dark preference.
+- **Font shortcuts:** `font = jetbrains-mono | cascadia | fira | iosevka | maple` (or any
+  installed family); a missing font is reported with its package and falls back to `auto`.
+- **Ligatures switch:** `ligatures = false` shows `=>`, `!=`, `->` as plain characters.
+- **Snippet pack:** `date`, `datetime`, `todo`, `fixme`, `shebang-bash`, `shebang-python`,
+  `lorem`, `md-table` (Kate's Snippets plugin is enabled for it). Edits you make to it in Kate are kept;
+  uninstall saves an edited pack to the backups folder.
+- `doctor` warns when the **qtengine** platform theme (used by Caelestia) asks for a Qt style
+  that isn't installed, e.g. Darkly, and says how to install it. Other platform themes such
+  as qt6ct aren't checked.
 
 ### Fixed
 - The opt-in pop-up notepad no longer overwrites a `org.kde.kate.desktop` launcher override

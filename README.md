@@ -48,7 +48,7 @@ Close Kate with unsaved notes and **no save dialog pops up**. Next time you open
 <td valign="top">
 
 ### 🧰 Notepad++ plugin tools, built in
-Format / minify JSON, Base64 and URL encode / decode, insert date & time, remove empty or duplicate lines, trim trailing spaces. Works on the selection or the whole file, one undo step each.
+Format / minify JSON, Base64 and URL encode / decode, insert date & time, remove empty or duplicate lines, trim trailing spaces. Works on the selection or the whole file, one undo step each. Plus a **snippet pack**: `date`, `datetime`, `todo`, `fixme`, `shebang-bash`, `shebang-python`, `lorem`, `md-table`.
 
 </td>
 <td valign="top">
@@ -222,6 +222,17 @@ Run `kate-plusplus` on its own for a small menu, or:
 | `kate-plusplus doctor` | health check (please include it in bug reports) |
 | `kate-plusplus update` | update Kate++ and re-apply |
 | `kate-plusplus uninstall` | remove Kate++, keep your notes |
+
+<details>
+<summary><b>Fonts & ligatures</b></summary>
+
+```ini
+[editor]
+font = jetbrains-mono   # auto · jetbrains-mono · cascadia · fira · iosevka · maple · or any installed family
+ligatures = true        # false shows => != -> as plain characters
+```
+If a font isn't installed, Kate++ says so (with the Arch package to install) and falls back to `auto`.
+</details>
 
 <details>
 <summary><b>Where things live</b></summary>

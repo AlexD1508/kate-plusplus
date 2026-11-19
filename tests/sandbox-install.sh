@@ -188,6 +188,87 @@ out=$(env -i HOME="$H" PATH=/usr/bin:/bin KPP_TEST=1 ./bin/kate-plusplus uninsta
 grep -q 'Kate++ settings removed' <<<"$out" || die "partial legacy records were treated as a full restore"
 grep -q '^Tabbar Tab Limit=' "$H/.config/katerc" && die "partial legacy uninstall left Kate++ settings behind"
 pass "partial legacy records fall back to removing Kate++ settings"
+# --- fonts, ligatures, snippets, Qt style hint ---
+H=$root/polish; mkdir -p "$H/.config/qtengine"
+printf '{"theme": {"style": "Darkly"}}' > "$H/.config/qtengine/config.json"
+printf '[Snippets]\nenabledRepositories=/home/me/my-snippets.xml\n' > "$H/.config/katerc"
+run install --yes --profile generic --no-overlay
+[[ -f $H/.local/share/ktexteditor_snippets/data/kate-plusplus.xml ]] || die "snippet pack not installed"
+grep -q '^Text Font Features=' "$H/.config/katerc" && die "ligatures are on by default; no font features should be written"
+cfg=$H/.config/kate-plusplus/config.ini
+sed -i 's/^ligatures = .*/ligatures = false/; s/^font = .*/font = iosevka-not-installed-xyz/' "$cfg"
+out=$(env -i HOME="$H" PATH=/usr/bin:/bin KPP_TEST=1 ./bin/kate-plusplus apply --yes 2>&1)
+grep -q "isn't installed; using auto" <<<"$out" || die "missing font should warn and fall back"
+grep -q '^Text Font Features=liga=0,calt=0,dlig=0$' "$H/.config/katerc" || die "ligatures=false not written"
+sed -i 's/^ligatures = .*/ligatures = true/' "$cfg"
+run apply --yes
+grep -q '^Text Font Features=' "$H/.config/katerc" && die "turning ligatures back on should remove the setting"
+out=$(env -i HOME="$H" PATH=/usr/bin:/bin KPP_TEST=1 QT_QPA_PLATFORMTHEME=qtengine ./bin/kate-plusplus doctor 2>&1)
+darkly_installed=$(PYTHONPATH=lib python3 -c 'from kpp import cli
+print(any("darkly" in f.name.lower() for d in cli.QT_STYLE_DIRS if d.is_dir() for f in d.iterdir()))')
+if [[ $darkly_installed == False ]]; then
+    grep -q "Qt style 'Darkly' is configured but not installed" <<<"$out" || die "doctor should flag the missing Darkly style"
+fi
+grep -q '^enabledRepositories=/home/me/my-snippets.xml,.*ktexteditor_snippets/data/kate-plusplus.xml$' "$H/.config/katerc" \
+    || die "snippet repository not enabled next to the user's own in Kate's Snippets config"
+run uninstall --yes
+[[ -f $H/.local/share/ktexteditor_snippets/data/kate-plusplus.xml ]] && die "uninstall left the snippet pack"
+grep -q '^enabledRepositories=/home/me/my-snippets.xml$' "$H/.config/katerc" \
+    || die "uninstall must keep the user's own snippet repositories"
+
+# a snippet pack edited in Kate's Snippets panel survives apply, and uninstall keeps it in backups
+H=$root/snipedit; mkdir -p "$H"
+run install --yes
+pack=$H/.local/share/ktexteditor_snippets/data/kate-plusplus.xml
+sed -i 's#</snippets>#<!-- my edit --></snippets>#' "$pack"
+grep -q 'my edit' "$pack" || die "test setup: could not edit the snippet pack"
+run apply --yes
+grep -q 'my edit' "$pack" || die "apply overwrote the user's edited snippet pack"
+run uninstall --yes
+[[ -f $pack ]] && die "uninstall left the edited pack in Kate's snippet folder"
+grep -lq 'my edit' "$H"/.local/share/kate-plusplus/backups/snippets-edited-*.xml 2>/dev/null \
+    || die "uninstall lost the user's edited snippet pack"
+
+# a file with the same name that existed before Kate++ comes back on uninstall
+H=$root/snipforeign; mkdir -p "$H/.local/share/ktexteditor_snippets/data"
+pack=$H/.local/share/ktexteditor_snippets/data/kate-plusplus.xml
+printf '<snippets name="mine"/>\n' > "$pack"
+run install --yes
+grep -q 'name="mine"' "$pack" && die "install should replace the old file with the pack (after backing it up)"
+run uninstall --yes
+[[ $(cat "$pack") == '<snippets name="mine"/>' ]] || die "uninstall did not put back the user's earlier snippet file"
+
+# fresh Kate (no katerc) → install → apply → uninstall: no reference to the removed snippet pack
+H=$root/snipfresh; mkdir -p "$H"
+run install --yes
+run apply --yes
+run uninstall --yes
+[[ ! -f $H/.config/katerc ]] || ! grep -q 'kate-plusplus.xml' "$H/.config/katerc" \
+    || die "uninstall left Kate's Snippets config pointing at the removed pack"
+
+# legacy fallback (no complete records, no backup) puts back the user's own font features
+H=$root/featlegacy; mkdir -p "$H/.config"
+printf '[KTextEditor Renderer]\nText Font Features=ss01=1\n' > "$H/.config/katerc"
+run install --yes
+sed -i 's/^ligatures = .*/ligatures = false/' "$H/.config/kate-plusplus/config.ini"
+run apply --yes
+grep -q '^Text Font Features=liga=0,calt=0,dlig=0$' "$H/.config/katerc" || die "ligatures=false not applied"
+python3 - "$H/.local/state/kate-plusplus/state.json" <<'PY'
+import json, sys
+p = sys.argv[1]; s = json.load(open(p)); s["katerc_complete"] = False; json.dump(s, open(p, "w"))
+PY
+rm -f "$H/.local/state/kate-plusplus/katerc.before-kate-plusplus"
+run uninstall --yes
+grep -q '^Text Font Features=ss01=1$' "$H/.config/katerc" || die "legacy uninstall lost the user's recorded font features"
+
+# fallback uninstall (no backup) keeps font features the user set themselves
+H=$root/features; mkdir -p "$H/.config"
+run install --yes
+printf '\n[KTextEditor Renderer]\nText Font Features=ss01=1\n' >> "$H/.config/katerc"
+rm -f "$H/.local/state/kate-plusplus/katerc.before-kate-plusplus"
+run uninstall --yes
+grep -q '^Text Font Features=ss01=1$' "$H/.config/katerc" || die "uninstall deleted the user's own font features"
+pass "font shortcuts, ligatures switch, snippets and Qt style hint"
 
 # --- legacy upgrade restores the original window scheme even without the full backup ---
 H=$root/legacy-scheme; mkdir -p "$H/.config"
