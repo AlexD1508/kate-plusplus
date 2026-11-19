@@ -12,7 +12,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from . import core, shortcuts, theme
+from . import core, ports, shortcuts, theme
 from .core import (APP, BACKUP_DIR, BIN_LINK, CAELESTIA_SCHEME, DIM, BOLD, RESET, ACCENT,
                    GREEN, YELLOW, RED, KDEGLOBALS, REPO, STATE_DIR, USER_CONFIG, VERSION,
                    XDG_CONFIG, XDG_DATA, banner, info, section, step, warn, fail, ask, have, run)
@@ -60,8 +60,26 @@ def resolve_profile(cfg) -> str:
     return "caelestia" if core.is_caelestia() else "generic"
 
 
+def _slug(text):
+    t = text.strip().lower().replace("é", "e").replace("'", "")
+    return "-".join(t.replace("_", " ").replace("-", " ").split())
+
+
+def kate_builtin_themes():
+    """Theme names Kate itself ships (empty if ksyntaxhighlighter6 isn't installed)."""
+    for tool in ("ksyntaxhighlighter6", "kate-syntax-highlighter"):
+        if have(tool):
+            out = run(tool, "--list-themes").stdout or ""
+            return [n.strip() for n in out.splitlines()
+                    if n.strip() and not n.strip().startswith("Kate++")]
+    return []
+
+
 def resolve_theme_source(cfg, profile) -> str | None:
-    src = cfg.get("theme", "source").lower()
+    """Returns a Kate++ source (caelestia/plasma/dark/light), 'port:<slug>',
+    'kate:<Theme Name>', or None to leave Kate's colours alone."""
+    raw = cfg.get("theme", "source").strip()
+    src = _slug(raw)
     if src == "none":
         return None
     if src == "auto":
@@ -76,10 +94,23 @@ def resolve_theme_source(cfg, profile) -> str | None:
     if src == "plasma" and not (KDEGLOBALS.is_file() and theme.plasma_ui(KDEGLOBALS)):
         warn("theme source 'plasma' chosen but no KDE colours found; using Kate++ Dark")
         return "dark"
-    if src not in THEME_NAMES:
-        warn(f"unknown theme source '{src}'; using auto")
+    if src in THEME_NAMES:
+        return src
+    if src in ports.FAMILIES:
+        dark_variant, light_variant = ports.FAMILIES[src]
+        return "port:" + (dark_variant if core.system_prefers_dark() else light_variant)
+    for slug, (name, *_rest) in ports.PORTS.items():
+        if src in (slug, _slug(name)):
+            return "port:" + slug
+    builtin = kate_builtin_themes()
+    for name in builtin:
+        if _slug(name) == src:
+            return "kate:" + name
+    if builtin:
+        warn(f"theme '{raw}' not found. Try one of: " + ", ".join(
+            sorted({*(n for n, *_ in ports.PORTS.values()), *builtin})))
         return resolve_theme_source(core.Config(), profile)
-    return src
+    return "kate:" + raw  # can't list Kate's themes here; trust the name
 
 
 def theme_path(kate, slug):
@@ -104,6 +135,8 @@ def build_themes(cfg, kate, source) -> str | None:
                 else:
                     background = ""
 
+    for slug in ports.PORTS:
+        theme.write_theme(theme_path(kate, slug), ports.build(slug))
     for variant in ("dark", "light"):
         ui = theme.static_ui(variant)
         if source == variant:
@@ -119,7 +152,17 @@ def build_themes(cfg, kate, source) -> str | None:
         ui = theme.apply_overrides(theme.plasma_ui(KDEGLOBALS), accent, background)
         theme.write_theme(theme_path(kate, "plasma"),
                           theme.build_theme(THEME_NAMES["plasma"], ui, intensity))
-    return THEME_NAMES.get(source) if source else None
+    return theme_display_name(source)
+
+
+def theme_display_name(source):
+    if not source:
+        return None
+    if source.startswith("port:"):
+        return ports.PORTS[source[5:]][0]
+    if source.startswith("kate:"):
+        return source[5:]
+    return THEME_NAMES.get(source)
 
 
 # ======================================================================= install / apply
@@ -410,7 +453,10 @@ def do_apply(args, first_install=False):
     theme_name = build_themes(cfg, kate, source)
     kate_settings(cfg, kate, theme_name)
     if theme_name:
-        step(f"Theme: {theme_name}  {DIM}({cfg.get('theme', 'syntax-colors')} syntax colours){RESET}")
+        detail = (f"{cfg.get('theme', 'syntax-colors')} syntax colours" if source in THEME_NAMES
+                  else "ships with Kate" if source.startswith("kate:")
+                  else f"by {ports.designer(source[5:])}")
+        step(f"Theme: {theme_name}  {DIM}({detail}){RESET}")
 
     section("System")
     overlay = False
@@ -599,8 +645,10 @@ def do_doctor(args):
     (ok if stash else bad)("Stash (no save prompts, tabs survive restarts)")
     t = core.read_rc_value(kate.katerc, "[KTextEditor Renderer]", "Color Theme")
     src = state.get("theme_source")
-    if src:
-        f = theme_path(kate, src)
+    if src and src.startswith("kate:"):
+        (ok if t == src[5:] else meh)(f"Theme {t}  {DIM}(ships with Kate){RESET}")
+    elif src:
+        f = theme_path(kate, src.split(":", 1)[-1])
         (ok if f.exists() else bad)(f"Theme {t}  {DIM}({f.name}){RESET}")
     else:
         meh("Theme: Kate's own (source = none)")
@@ -724,7 +772,7 @@ def do_menu(args):
             do_apply(args, first_install=True)
         return
     print(f"  {DIM}profile{RESET} {state.get('profile')}   {DIM}theme{RESET} "
-          f"{THEME_NAMES.get(state.get('theme_source') or '', 'Kate default')}   "
+          f"{theme_display_name(state.get('theme_source')) or 'Kate default'}   "
           f"{DIM}overlay{RESET} {state.get('overlay_hotkey') or 'off'}\n")
     items = [("Apply settings", "re-apply config.ini", do_apply),
              ("Edit settings", "open config.ini", do_config),

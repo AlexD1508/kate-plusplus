@@ -223,39 +223,64 @@ def apply_overrides(ui, accent=None, background=None):
 # ----------------------------------------------------------------- theme build
 
 def build_theme(name, ui, intensity="balanced"):
-    bg, dark = ui["bg"], is_dark(ui["bg"])
+    """The harmonised Kate++ theme for a set of surface colours."""
+    dark = is_dark(ui["bg"])
     _, _, acc_h = hex_to_oklch(ui["accent"])
     L, C = (0.81, 0.085) if dark else (0.50, 0.12)
     C *= INTENSITY.get(intensity, 1.0)
-    p = {k: ensure_contrast(oklch_to_hex(L, C, h), bg, 6.0) for k, h in assign_hues(acc_h).items()}
-    keyword = ensure_contrast(ui["accent"], bg, 6.0)
-    comment = ensure_contrast(ui["comment"], bg, 4.6)
+    p = {k: oklch_to_hex(L, C, h) for k, h in assign_hues(acc_h).items()}
+    tokens = {
+        "keyword": ui["accent"], "function": p["blue"], "builtin": p["purple"],
+        "preproc": p["red"], "type": p["gold"], "string": p["green"], "special": p["teal"],
+        "number": p["orange"], "comment": ui["comment"],
+    }
+    return assemble(name, ui, tokens, token_floor=6.0, comment_floor=4.6)
+
+
+def assemble(name, ui, tokens, token_floor=4.5, comment_floor=4.5, keyword_style=None,
+             copyright=None, license="MIT"):
+    """Turn surface roles (`ui`) and token colours into a KSyntaxHighlighting theme.
+
+    tokens needs: keyword, function, builtin, preproc, type, string, special, number, comment.
+    Optional: control, import, attribute, constant, operator, others, annotation, variable.
+    Every foreground is lifted to its contrast floor against the background."""
+    bg = ui["bg"]
+    lift = lambda c, f=token_floor: ensure_contrast(norm(c), bg, f)  # noqa: E731
+    t = {k: lift(v) for k, v in tokens.items() if k != "comment"}
+    t["comment"] = lift(tokens["comment"], comment_floor)
+    for key, fallback in (("control", "keyword"), ("import", "builtin"), ("attribute", "type"),
+                          ("constant", "number"), ("others", "builtin"), ("annotation", "special")):
+        t.setdefault(key, t[fallback])
     fg = ensure_contrast(ui["fg"], bg, 10.0)
     muted = ensure_contrast(ui["fg_muted"], bg, 7.0)
+    t.setdefault("operator", muted)
+    t.setdefault("variable", fg)
     sel_fg = ensure_contrast(ui["on_selection"], ui["selection"], 7.0)
     line_numbers = ensure_contrast(ui["line_numbers"], bg, 2.6)
+    kw = keyword_style if keyword_style is not None else {"bold": True}
 
-    def s(color, **kw):
+    def s(color, **kw_):
         d = {"text-color": "#" + color, "selected-text-color": "#" + sel_fg}
-        for k, v in kw.items():
+        for k, v in kw_.items():
             d[k.replace("_", "-")] = ("#" + v) if k.endswith("color") else v
         return d
 
     styles = {
-        "Normal": s(fg), "Variable": s(fg), "Operator": s(muted),
-        "Keyword": s(keyword, bold=True), "ControlFlow": s(keyword, bold=True),
-        "Function": s(p["blue"]), "Extension": s(p["blue"], bold=True),
-        "BuiltIn": s(p["purple"]), "Import": s(p["purple"]), "Others": s(p["purple"]),
-        "Preprocessor": s(p["red"]),
-        "Attribute": s(p["gold"]), "DataType": s(p["gold"]),
-        "String": s(p["green"]), "VerbatimString": s(p["green"]), "Char": s(p["green"]),
-        "SpecialString": s(p["teal"]), "SpecialChar": s(p["teal"]), "Annotation": s(p["teal"]),
-        "DecVal": s(p["orange"]), "BaseN": s(p["orange"]), "Float": s(p["orange"]),
-        "Constant": s(p["orange"], bold=True),
-        "Comment": s(comment, italic=True), "Documentation": s(comment, italic=True),
-        "CommentVar": s(p["purple"], italic=True),
-        "RegionMarker": s(p["teal"], background_color=ui["raised"]),
-        "Information": s(p["green"]), "Warning": s(p["orange"], bold=True),
+        "Normal": s(fg), "Variable": s(t["variable"]), "Operator": s(t["operator"]),
+        "Keyword": s(t["keyword"], **kw), "ControlFlow": s(t["control"], **kw),
+        "Function": s(t["function"]), "Extension": s(t["function"], bold=True),
+        "BuiltIn": s(t["builtin"]), "Import": s(t["import"]), "Others": s(t["others"]),
+        "Preprocessor": s(t["preproc"]),
+        "Attribute": s(t["attribute"]), "DataType": s(t["type"]),
+        "String": s(t["string"]), "VerbatimString": s(t["string"]), "Char": s(t["string"]),
+        "SpecialString": s(t["special"]), "SpecialChar": s(t["special"]),
+        "Annotation": s(t["annotation"]),
+        "DecVal": s(t["number"]), "BaseN": s(t["number"]), "Float": s(t["number"]),
+        "Constant": s(t["constant"], bold=True),
+        "Comment": s(t["comment"], italic=True), "Documentation": s(t["comment"], italic=True),
+        "CommentVar": s(t["builtin"], italic=True),
+        "RegionMarker": s(t["special"], background_color=ui["raised"]),
+        "Information": s(t["string"]), "Warning": s(t["number"], bold=True),
         "Alert": s(ensure_contrast(ui["on_error_bg"], ui["error_bg"], 6.0),
                    background_color=ui["error_bg"], bold=True),
         "Error": s(ensure_contrast(ui["error"], bg, 4.6), underline=True),
@@ -264,25 +289,25 @@ def build_theme(name, ui, intensity="balanced"):
     editor = {
         "BackgroundColor": e(bg), "TextSelection": e(ui["selection"]),
         "CurrentLine": e(ui["current_line"]),
-        "SearchHighlight": e(mix(bg, p["gold"], 0.30)),
-        "ReplaceHighlight": e(mix(bg, p["green"], 0.30)),
+        "SearchHighlight": e(mix(bg, t["type"], 0.30)),
+        "ReplaceHighlight": e(mix(bg, t["string"], 0.30)),
         "BracketMatching": e(ui["raised2"]), "IconBorder": e(bg),
-        "LineNumbers": e(line_numbers), "CurrentLineNumber": e(keyword),
+        "LineNumbers": e(line_numbers), "CurrentLineNumber": e(t["keyword"]),
         "Separator": e(ui["raised"]), "CodeFolding": e(ui["current_line"]),
         "IndentationLine": e(ui["raised"]), "WordWrapMarker": e(ui["raised"]),
         "TabMarker": e(ui["raised2"]),
-        "ModifiedLines": e(p["gold"]), "SavedLines": e(p["green"]),
+        "ModifiedLines": e(t["type"]), "SavedLines": e(t["string"]),
         "SpellChecking": e(ui["error"]),
-        "MarkBookmark": e(keyword), "MarkBreakpointActive": e(ui["error"]),
-        "MarkBreakpointReached": e(p["gold"]), "MarkBreakpointDisabled": e(line_numbers),
-        "MarkExecution": e(p["blue"]), "MarkWarning": e(p["orange"]), "MarkError": e(ui["error"]),
+        "MarkBookmark": e(t["keyword"]), "MarkBreakpointActive": e(ui["error"]),
+        "MarkBreakpointReached": e(t["type"]), "MarkBreakpointDisabled": e(line_numbers),
+        "MarkExecution": e(t["function"]), "MarkWarning": e(t["number"]), "MarkError": e(ui["error"]),
         "TemplateBackground": e(ui["current_line"]), "TemplatePlaceholder": e(ui["raised2"]),
         "TemplateFocusedPlaceholder": e(ui["selection"]),
         "TemplateReadOnlyPlaceholder": e(ui["raised"]),
     }
     return {
-        "metadata": {"name": name, "revision": 1, "license": "MIT",
-                     "copyright": ["kate-plusplus contributors"], "read-only": False},
+        "metadata": {"name": name, "revision": 1, "license": license,
+                     "copyright": copyright or ["kate-plusplus contributors"], "read-only": False},
         "text-styles": styles,
         "editor-colors": editor,
     }
