@@ -160,6 +160,8 @@ background =               # e.g. #1a1b26
 syntax-colors = balanced   # soft | balanced | vivid
 ```
 
+<sub>`accent`, `background` and `syntax-colors` tune the adaptive Kate++ themes (`auto`, `caelestia`, `plasma`, `dark`, `light`). Named themes such as Rosé Pine or Dracula keep their designers' colours.</sub>
+
 <p align="center"><img src="assets/intensity.png" width="900" alt="soft, balanced and vivid syntax colours"></p>
 
 #### 🌈 Popular themes, ready to go
@@ -176,7 +178,7 @@ Prefer a classic? Put its name in `source`. Kate++ adds ten favourites that Kate
 | `night-owl` | Night Owl | [Sarah Drasner](https://github.com/sdras/night-owl-vscode-theme) |
 | `synthwave-84` | Synthwave '84 | [Robb Owen](https://github.com/robb0wen/synthwave-vscode) |
 
-A family name such as `rose-pine` picks the dark or light variant to match your system; a full name such as `Rosé Pine Moon` picks exactly that one. **Every theme that ships with Kate works too**: `Catppuccin Mocha`, `Dracula`, `Nord`, `Tokyo Night`, `gruvbox Dark`, `Atom One Dark`, `Solarized Light`, `Monokai`, `ayu Mirage`, … Capitals and spaces don't matter.
+A family name such as `rose-pine` picks the dark or light variant to match your system; a full name such as `Rosé Pine Moon` (or `rose-pine-main`) picks exactly that one. **Every theme that ships with Kate works too**: `Catppuccin Mocha`, `Dracula`, `Nord`, `Tokyo Night`, `gruvbox Dark`, `Atom One Dark`, `Solarized Light`, `Monokai`, `ayu Mirage`, … Capitals and spaces don't matter.
 
 Then `kate-plusplus apply`. With Caelestia or Plasma as the source, the theme regenerates by itself whenever your colours change.
 
@@ -279,7 +281,7 @@ Kate++ only ever changes the individual settings it manages. Everything else in 
 > - `auto` follows your Caelestia wallpaper or KDE Plasma colours.
 > - `dark` / `light` use the built-in Kate++ themes.
 > - Or any theme by name: `rose-pine`, `kanagawa`, `Catppuccin Mocha`, `Dracula`, …
-> - Add your own `accent`, `background` or `syntax-colors`. Readability is always kept.
+> - Add your own `accent`, `background` or `syntax-colors` to the adaptive themes. Readability is always kept.
 
 </details>
 

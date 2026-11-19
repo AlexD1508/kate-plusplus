@@ -136,6 +136,11 @@ PORTS = {
     "synthwave-84": ("Synthwave '84", _synthwave, SYNTHWAVE, True),
 }
 
+# extra names that select one exact variant (e.g. Main even on a light system)
+ALIASES = {
+    "rose-pine": ("rose-pine-main", "Rosé Pine Main"),
+}
+
 # family → (dark variant, light variant)
 FAMILIES = {
     "rose-pine": ("rose-pine", "rose-pine-dawn"),

@@ -65,14 +65,32 @@ def _slug(text):
     return "-".join(t.replace("_", " ").replace("-", " ").split())
 
 
+def _key(text):
+    """Comparison key: case, accents, spaces, hyphens and underscores don't matter."""
+    return _slug(text).replace("-", "")
+
+
+# Themes bundled with Kate (KSyntaxHighlighting 6). Used when no listing tool is installed.
+KATE_THEMES = (
+    "Atom One Dark", "Atom One Light", "Breeze Dark", "Breeze Light", "Catppuccin Frappé",
+    "Catppuccin Latte", "Catppuccin Macchiato", "Catppuccin Mocha", "Dracula", "Falcon",
+    "GitHub Dark", "GitHub Light", "Homunculus", "Monokai", "Nord", "Oblivion", "Printing",
+    "Radical", "Solarized Dark", "Solarized Light", "Tokyo Night", "Tokyo Night Light",
+    "Tokyo Night Storm", "VSCodium Dark", "Vim Dark", "ayu Dark", "ayu Light", "ayu Mirage",
+    "gruvbox Dark", "gruvbox Light",
+)
+
+
 def kate_builtin_themes():
-    """Theme names Kate itself ships (empty if ksyntaxhighlighter6 isn't installed)."""
+    """Theme names Kate itself ships: asked from KSyntaxHighlighting when possible."""
     for tool in ("ksyntaxhighlighter6", "kate-syntax-highlighter"):
         if have(tool):
             out = run(tool, "--list-themes").stdout or ""
-            return [n.strip() for n in out.splitlines()
-                    if n.strip() and not n.strip().startswith("Kate++")]
-    return []
+            names = [n.strip() for n in out.splitlines()
+                     if n.strip() and not n.strip().startswith("Kate++")]
+            if names:
+                return names
+    return list(KATE_THEMES)
 
 
 def resolve_theme_source(cfg, profile) -> str | None:
@@ -96,21 +114,20 @@ def resolve_theme_source(cfg, profile) -> str | None:
         return "dark"
     if src in THEME_NAMES:
         return src
-    if src in ports.FAMILIES:
-        dark_variant, light_variant = ports.FAMILIES[src]
-        return "port:" + (dark_variant if core.system_prefers_dark() else light_variant)
+    key = _key(raw)
+    for family, (dark_variant, light_variant) in ports.FAMILIES.items():
+        if key == _key(family):
+            return "port:" + (dark_variant if core.system_prefers_dark() else light_variant)
     for slug, (name, *_rest) in ports.PORTS.items():
-        if src in (slug, _slug(name)):
+        if key in (_key(slug), _key(name)) or key in map(_key, ports.ALIASES.get(slug, ())):
             return "port:" + slug
     builtin = kate_builtin_themes()
     for name in builtin:
-        if _slug(name) == src:
+        if _key(name) == key:
             return "kate:" + name
-    if builtin:
-        warn(f"theme '{raw}' not found. Try one of: " + ", ".join(
-            sorted({*(n for n, *_ in ports.PORTS.values()), *builtin})))
-        return resolve_theme_source(core.Config(), profile)
-    return "kate:" + raw  # can't list Kate's themes here; trust the name
+    warn(f"theme '{raw}' not found; using auto. Try one of: " + ", ".join(
+        sorted({*(n for n, *_ in ports.PORTS.values()), *builtin}, key=str.lower)))
+    return resolve_theme_source(core.Config(), profile)
 
 
 def theme_path(kate, slug):
