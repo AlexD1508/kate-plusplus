@@ -244,6 +244,15 @@ def setup_overlay(cfg, kate, state):
     return True
 
 
+DESKTOP_MARK = "X-KatePlusPlus=true"
+
+
+def _is_ours(path: Path) -> bool:
+    """True only for launcher files Kate++ wrote: the marker must be a line of its own."""
+    text = path.read_text(encoding="utf-8", errors="replace")
+    return any(line.strip() == DESKTOP_MARK for line in text.splitlines())
+
+
 def pin_main_session():
     """Local copy of Kate's launcher that always opens the Notepad session, so files you
     open from the launcher / file manager never land in the hidden scratchpad."""
@@ -252,7 +261,7 @@ def pin_main_session():
     if not src:
         return
     dest = XDG_DATA / "applications/org.kde.kate.desktop"
-    if dest.exists() and "X-KatePlusPlus=true" not in dest.read_text(encoding="utf-8", errors="replace"):
+    if dest.exists() and not _is_ours(dest):
         warn(f"Not touching your own {dest}; Kate files may open in the Scratchpad session "
              "while it runs. Add `-s Notepad` to its Exec= lines to avoid that.")
         return
@@ -261,7 +270,7 @@ def pin_main_session():
         if line.startswith("Exec=kate") and " -s " not in line:
             line = line.replace("Exec=kate", f"Exec=kate -s {SESSION}", 1)
         out.append(line)
-    out.append("X-KatePlusPlus=true")
+    out.append(DESKTOP_MARK)
     core.atomic_write(dest, "\n".join(out) + "\n")
 
 
@@ -282,7 +291,7 @@ def remove_overlay():
     for f in (HYPR_FILE_LUA, HYPR_FILE_CONF, XDG_DATA / f"applications/{SCRATCH_ID}.desktop"):
         f.unlink(missing_ok=True)
     own = XDG_DATA / "applications/org.kde.kate.desktop"
-    if own.exists() and "X-KatePlusPlus=true" in own.read_text(encoding="utf-8", errors="replace"):
+    if own.exists() and _is_ours(own):
         own.unlink()   # only Kate++'s own copy; same lenient decoding as when it was written
     if have("hyprctl"):
         run("hyprctl", "reload")
