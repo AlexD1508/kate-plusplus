@@ -238,6 +238,40 @@ grep -q 'name="mine"' "$pack" && die "install should replace the old file with t
 run uninstall --yes
 [[ $(cat "$pack") == '<snippets name="mine"/>' ]] || die "uninstall did not put back the user's earlier snippet file"
 
+# same, but the fallback uninstall (no backup, records incomplete): the pack's repository
+# entry must still go, and a symlinked original comes back as the same symlink
+H=$root/snipfallback; sd=$H/.local/share/ktexteditor_snippets/data; mkdir -p "$sd" "$H/dotfiles"
+printf '<snippets name="mine"/>\n' > "$H/dotfiles/snips.xml"
+ln -s "$H/dotfiles/snips.xml" "$sd/kate-plusplus.xml"
+run install --yes
+[[ -L $sd/kate-plusplus.xml ]] && die "install wrote through the user's symlink"
+grep -q 'name="mine"' "$H/dotfiles/snips.xml" || die "install changed the symlink's target"
+python3 - "$H/.local/state/kate-plusplus/state.json" <<'PY'
+import json, sys
+p = sys.argv[1]; s = json.load(open(p)); s["katerc_complete"] = False; json.dump(s, open(p, "w"))
+PY
+rm -f "$H/.local/state/kate-plusplus/katerc.before-kate-plusplus"
+run uninstall --yes
+[[ $(readlink "$sd/kate-plusplus.xml") == "$H/dotfiles/snips.xml" ]] || die "uninstall did not restore the user's symlink"
+grep -q 'kate-plusplus.xml' "$H/.config/katerc" && die "fallback uninstall left the pack in enabledRepositories"
+
+# a same-named file Kate++ has no record of owning is left alone by uninstall
+H=$root/snipnotours; sd=$H/.local/share/ktexteditor_snippets/data
+run install --yes
+printf '<snippets name="mine"/>\n' > "$sd/kate-plusplus.xml"
+python3 - "$H/.local/state/kate-plusplus/state.json" <<'PY'
+import json, sys
+p = sys.argv[1]; s = json.load(open(p)); s.pop("snippets_sha", None); json.dump(s, open(p, "w"))
+PY
+run uninstall --yes
+grep -q 'name="mine"' "$sd/kate-plusplus.xml" || die "uninstall deleted a snippet file Kate++ didn't own"
+
+# a fresh install leaves no empty snippet folders behind
+H=$root/snipdirs; mkdir -p "$H"
+run install --yes
+run uninstall --yes
+[[ -e $H/.local/share/ktexteditor_snippets ]] && die "uninstall left the empty snippet folders Kate++ created"
+
 # fresh Kate (no katerc) → install → apply → uninstall: no reference to the removed snippet pack
 H=$root/snipfresh; mkdir -p "$H"
 run install --yes

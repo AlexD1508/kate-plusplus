@@ -362,16 +362,19 @@ def install_snippets(kate, state):
 
     Kate saves edits made in its Snippets panel into this same file, so Kate++ only replaces
     it while it still matches what Kate++ last wrote. A file that already existed before
-    Kate++ is backed up first and put back on uninstall."""
+    Kate++ (a symlink stays a symlink) is backed up first and put back on uninstall."""
     dst = snippet_file(kate)
     ours = (REPO / "snippets/kate-plusplus.xml").read_text(encoding="utf-8")
     current = _sha(dst)
     last = state.get("snippets_sha")
-    if current is not None and last is None and current != hashlib.sha256(ours.encode()).hexdigest():
-        SNIPPETS_BEFORE.parent.mkdir(parents=True, exist_ok=True)
-        if not SNIPPETS_BEFORE.exists():
-            shutil.copy2(dst, SNIPPETS_BEFORE)            # someone else's file with this name
-        current = None                                    # replace it with the pack below
+    if last is None:            # first time: remember what was there, to undo it exactly
+        state.setdefault("snippets_dir_created", not dst.parent.exists())
+        if os.path.lexists(dst) and current != hashlib.sha256(ours.encode()).hexdigest():
+            SNIPPETS_BEFORE.parent.mkdir(parents=True, exist_ok=True)
+            if not os.path.lexists(SNIPPETS_BEFORE):    # someone else's file with this name
+                shutil.copy2(dst, SNIPPETS_BEFORE, follow_symlinks=False)
+            state["snippets_before_enabled"] = str(dst) in _enabled_repos(kate)
+            current = None                              # replace it with the pack below
     if current is not None and last is not None and current != last:
         info("Snippets: keeping your edited Kate++ snippet pack (not overwritten)")
     else:
@@ -386,23 +389,36 @@ def install_snippets(kate, state):
 
 def remove_snippets(kate, state=None):
     """Uninstall: an untouched pack is removed, an edited one is moved to the backups folder
-    (which uninstall keeps), and a file that existed before Kate++ is put back."""
+    (which uninstall keeps), and a file that existed before Kate++ is put back. A file
+    Kate++ has no record of owning is left alone, with its repository entry."""
+    state = state or {}
     dst = snippet_file(kate)
-    last = (state or {}).get("snippets_sha")
-    if dst.exists() and last is not None and _sha(dst) != last:
+    last = state.get("snippets_sha")
+    before = os.path.lexists(SNIPPETS_BEFORE)
+    pack_sha = hashlib.sha256((REPO / "snippets/kate-plusplus.xml").read_bytes()).hexdigest()
+    if os.path.lexists(dst) and last is None and not before and _sha(dst) != pack_sha:
+        return                              # not ours: never installed or replaced by Kate++
+    if os.path.lexists(dst) and last is not None and _sha(dst) != last:
         BACKUP_DIR.mkdir(parents=True, exist_ok=True)
         kept = BACKUP_DIR / f"snippets-edited-{datetime.now():%Y%m%d-%H%M%S}.xml"
         shutil.move(str(dst), kept)
         info(f"Your edited snippet pack was kept: {kept}")
-    else:
-        dst.unlink(missing_ok=True)
-    if SNIPPETS_BEFORE.exists():
-        shutil.move(str(SNIPPETS_BEFORE), dst)
-        return
+    elif os.path.lexists(dst):
+        dst.unlink()
+    keep_entry = before and state.get("snippets_before_enabled", False)
     repos = _enabled_repos(kate)
-    if str(dst) in repos:
+    if str(dst) in repos and not keep_entry:   # every path: the fallback uninstall relies on it
         rest = [r for r in repos if r != str(dst)]
         core.merge_rc(kate.katerc, [(SNIPPETS_GROUP, SNIPPETS_KEY, ",".join(rest) if rest else "@delete")])
+    if before:
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(SNIPPETS_BEFORE), dst)   # moves a symlink as a symlink
+    elif state.get("snippets_dir_created"):
+        for d in (dst.parent, dst.parent.parent):   # only if empty: os.rmdir refuses otherwise
+            try:
+                d.rmdir()
+            except OSError:
+                break
 
 
 UI = "[UiSettings]"
