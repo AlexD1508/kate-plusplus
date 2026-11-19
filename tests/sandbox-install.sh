@@ -50,7 +50,7 @@ sed -i 's/^auto-save = 30/auto-save = focus/' "$H/.config/kate-plusplus/config.i
 run apply --yes
 grep -q '^Auto Save=true' "$H/.config/katerc"              || die "focus mode needs the Auto Save master switch (KTextEditor checks both)"
 grep -q '^Auto Save On Focus Out=true' "$H/.config/katerc" || die "focus mode must save on focus out"
-grep -q '^Auto Save Interval' "$H/.config/katerc"          && die "focus mode left an idle interval behind"
+grep -q '^Auto Save Interval=0$' "$H/.config/katerc"       || die "focus mode must set the idle interval to 0 (kdeglobals may cascade one)"
 sed -i 's/^auto-save = focus/auto-save = 2/' "$H/.config/kate-plusplus/config.ini"
 run apply --yes
 grep -q '^Auto Save' "$H/.config/katerc"                   && die "an out-of-range value must turn Kate++ auto-save off"
@@ -101,7 +101,7 @@ run install --yes
 grep -q '^Auto Save Interval=60' "$H/.config/katerc" || die "auto-save = off changed the user's own setting"
 sed -i 's/^auto-save = off/auto-save = focus/' "$H/.config/kate-plusplus/config.ini"
 run apply --yes
-grep -q '^Auto Save Interval' "$H/.config/katerc" && die "focus mode kept an interval"
+grep -q '^Auto Save Interval=0$' "$H/.config/katerc" || die "focus mode kept an interval"
 sed -i 's/^auto-save = focus/auto-save = off/' "$H/.config/kate-plusplus/config.ini"
 run apply --yes
 grep -q '^Auto Save Interval=60' "$H/.config/katerc"   || die "switching back to off didn't restore the user's interval"
@@ -127,6 +127,21 @@ run uninstall --yes
 grep -q '^Auto Save Interval=60' "$H/.config/katerc" || die "uninstall overwrote auto-save the user set after 'off'"
 grep -q '^Auto Save=true' "$H/.config/katerc"        || die "uninstall overwrote the user's later Auto Save"
 pass "after off, a later own auto-save setting survives uninstall"
+
+# --- turning auto-save on again after 'off' records the user's values from that moment ---
+H=$root/autosavereacquire; mkdir -p "$H/.config"
+printf '[KTextEditor Document]\nAuto Save Interval=90\n' > "$H/.config/katerc"   # pre-install value
+run install --yes
+cfg=$H/.config/kate-plusplus/config.ini
+sed -i 's/^auto-save = off/auto-save = focus/' "$cfg"; run apply --yes
+sed -i 's/^auto-save = focus/auto-save = off/' "$cfg"; run apply --yes
+sed -i 's/^Auto Save Interval=90$/Auto Save Interval=45/' "$H/.config/katerc"     # user's own, later
+grep -q '^Auto Save Interval=45$' "$H/.config/katerc" || die "test setup: interval not changed"
+sed -i 's/^auto-save = off/auto-save = focus/' "$cfg"; run apply --yes
+rm -f "$H/.local/state/kate-plusplus/katerc.before-kate-plusplus"                 # per-key restore
+run uninstall --yes
+grep -q '^Auto Save Interval=45$' "$H/.config/katerc" || die "uninstall restored the pre-install interval, not the user's later one"
+pass "re-enabling auto-save records the user's current values"
 
 # --- legacy fallback (records incomplete, no backup) puts recorded auto-save values back ---
 H=$root/legacyautosave; mkdir -p "$H/.config"

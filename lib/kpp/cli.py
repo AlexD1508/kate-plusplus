@@ -498,10 +498,17 @@ def auto_save(cfg, kate, state):
     settings = [
         (DOC, "Auto Save", "true"),
         (DOC, "Auto Save On Focus Out", "true"),
-        (DOC, "Auto Save Interval", str(interval) if interval else "@delete"),
+        # 0, not removed: kdeglobals can cascade a positive interval into Kate's settings
+        (DOC, "Auto Save Interval", str(interval) if interval else "0"),
     ]
     # record originals and persist ownership *before* katerc changes, so a failure later in
     # apply can't leave auto-save on without Kate++ knowing it has to undo it
+    if not state.get("auto_save_managed"):
+        # taking over (again): the originals are what katerc holds right now, e.g. a value
+        # the user set after an earlier 'off', not the pre-install backup's
+        _init_records(state)
+        for k in AUTO_SAVE_KEYS:
+            state["katerc_before"][f"{DOC}\t{k}"] = core.read_rc_value(kate.katerc, DOC, k)
     record_katerc(kate, state, settings)
     state["auto_save_managed"] = True
     core.save_state(state)
