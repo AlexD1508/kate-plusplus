@@ -18,6 +18,11 @@ All notable changes to Kate++ are listed here. The format follows
 - `source` in `config.ini` accepts **any theme by name**, including every theme that ships
   with Kate (`Catppuccin Mocha`, `Dracula`, `Nord`, …). Family names (`rose-pine`,
   `kanagawa`, `everforest`) follow your system's light/dark preference.
+- **Breadcrumbs:** a slim bar above the text shows folder › file and, when a language server
+  provides symbols, the innermost function or class at the cursor; click a crumb to jump
+  (Kate's navigation bar with the current symbol). `[editor] breadcrumbs = true | false`.
+- `apply` adds options introduced by newer Kate++ versions to an existing `config.ini`
+  (with their comments), so new settings show up in `kate-plusplus config`.
 
 ### Fixed
 - The opt-in pop-up notepad no longer overwrites a `org.kde.kate.desktop` launcher override

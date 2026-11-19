@@ -243,7 +243,8 @@ def managed_keys():
     r = "[KTextEditor Renderer]"
     keys = [(g, k) for g, k, _ in core.read_settings_ini(REPO / "config/kate.ini")]
     return keys + [(r, "Text Font"), (r, "Line Height Multiplier"), (r, "Color Theme"),
-                   (r, "Auto Color Theme Selection"), ("[KTextEditor View]", "Scroll Bar MiniMap")]
+                   (r, "Auto Color Theme Selection"), ("[KTextEditor View]", "Scroll Bar MiniMap"),
+                   ("[General]", "Show Url Nav Bar"), ("[General]", "Show Symbol In Navigation Bar")]
 
 
 def set_katerc(kate, state, settings):
@@ -311,6 +312,10 @@ def kate_settings(cfg, kate, theme_name, state):
         (r, "Text Font", f"{font},{size},-1,2,400,0,0,0,0,0,0,0,0,0,0,1"),
         (r, "Line Height Multiplier", f"{spacing:g}"),
         ("[KTextEditor View]", "Scroll Bar MiniMap", str(cfg.flag("editor", "minimap")).lower()),
+        # Breadcrumbs: Kate's navigation bar (folder › file) plus one crumb for the symbol at
+        # the cursor (Kate shows it when a language server provides document symbols)
+        ("[General]", "Show Url Nav Bar", str(cfg.flag("editor", "breadcrumbs")).lower()),
+        ("[General]", "Show Symbol In Navigation Bar", str(cfg.flag("editor", "breadcrumbs")).lower()),
     ]
     if theme_name:
         settings += [(r, "Auto Color Theme Selection", "false"), (r, "Color Theme", theme_name)]
@@ -528,6 +533,7 @@ def do_apply(args, first_install=False):
     kate = need_kate()
     state = core.load_state()
     created = core.ensure_user_config()
+    new_options = [] if created else core.upgrade_user_config()
     cfg = core.load_config()
     profile = resolve_profile(cfg)
 
@@ -542,6 +548,8 @@ def do_apply(args, first_install=False):
             fail("Nothing changed.", 0)
 
     core.wait_for_kate_closed(kate)
+    if new_options:
+        info(f"New options added to {USER_CONFIG.name}: {', '.join(new_options)}")
 
     section("Safety first")
     if kate.katerc.exists() and not PRE_INSTALL.exists() and not core.load_state():

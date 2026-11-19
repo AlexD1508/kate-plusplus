@@ -21,6 +21,8 @@ grep -q '^Current Scheme=' "$H/.config/katerc"                && die "a shortcut
 grep -q '^Stash unsaved file changes=true' "$H/.config/katerc"  || die "stash not enabled"
 grep -q '^Color Theme=Kate++ ' "$H/.config/katerc"              || die "theme not set"
 grep -q '^Recent Files Count=10' "$H/.config/katerc"            || die "existing setting lost"
+grep -q '^Show Url Nav Bar=true' "$H/.config/katerc"            || die "breadcrumbs not enabled"
+grep -q '^Show Symbol In Navigation Bar=true' "$H/.config/katerc" || die "breadcrumb symbol not enabled"
 grep -q '^text/plain=org.kde.kate.desktop' "$H/.config/mimeapps.list" || die "default editor not set"
 for f in kxmlgui5/kate/kateui.rc kxmlgui5/katepart/katepart5ui.rc kxmlgui5/keyboardmacros/ui.rc \
          katepart5/script/commands/kate-plusplus.js \
@@ -30,7 +32,85 @@ done
 pass "generic install"
 
 sed -i 's/^accent =$/accent = #e06c75/; s/^syntax-colors = balanced/syntax-colors = vivid/' "$H/.config/kate-plusplus/config.ini"
+sed -i 's/^breadcrumbs = true/breadcrumbs = false/' "$H/.config/kate-plusplus/config.ini"
 run apply --yes
+grep -q '^Show Url Nav Bar=false' "$H/.config/katerc" || die "breadcrumbs = false not applied"
+
+# config.ini from an older Kate++ (no breadcrumbs line) gains the option on apply,
+# with its comment, while the user's own values stay as they are
+sed -i '/^breadcrumbs = /d' "$H/.config/kate-plusplus/config.ini"
+run apply --yes
+grep -q '^breadcrumbs = true' "$H/.config/kate-plusplus/config.ini" || die "new option not added to an existing config.ini"
+grep -q '^accent = #e06c75' "$H/.config/kate-plusplus/config.ini"   || die "upgrade changed the user's own values"
+[[ $(grep -c '^breadcrumbs = ' "$H/.config/kate-plusplus/config.ini") == 1 ]] || die "option added twice"
+run apply --yes
+[[ $(grep -c '^breadcrumbs = ' "$H/.config/kate-plusplus/config.ini") == 1 ]] || die "option duplicated on re-apply"
+# Every fixture below drops one template option (font-size) first, so apply has to insert it:
+# the insertion, the parse check and the rejection paths all run.
+C="$H/.config/kate-plusplus/config.ini"
+upgrade() {  # run only the migration, capture its warnings; fails the test on an exception
+    env -i HOME="$H" PATH=/usr/bin:/bin KPP_TEST=1 python3 - "$PWD/lib" 2>&1 >/dev/null <<'PY'
+import sys
+sys.path.insert(0, sys.argv[1])
+from kpp import core
+print(",".join(core.upgrade_user_config()))
+PY
+}
+loads() { python3 -c 'import configparser,sys; c=configparser.ConfigParser(interpolation=None); c.read(sys.argv[1])' "$C"; }
+
+# the other ways ConfigParser accepts a file: a header with a trailing comment, another
+# capitalisation, and ':' as the delimiter. Existing options are recognised, never duplicated.
+sed -i 's/^\[editor\]$/[editor]  # my editor settings/; s/^minimap = true .*/MiniMap = true/; s/^breadcrumbs = true .*/breadcrumbs: true/; /^font-size = /d' "$C"
+run apply --yes
+loads || die "upgrade broke a config written in alternative syntax"
+[[ $(grep -c '^\[editor\]' "$C") == 1 ]]   || die "section with a trailing comment was duplicated"
+[[ $(grep -ci '^minimap' "$C") == 1 ]]      || die "MiniMap was duplicated"
+[[ $(grep -c '^breadcrumbs' "$C") == 1 ]]   || die "'breadcrumbs:' was duplicated"
+[[ $(grep -c '^font-size = ' "$C") == 1 ]]  || die "missing font-size was not inserted exactly once"
+grep -q '^MiniMap = true$' "$C"             || die "the user's original text was changed"
+
+# an indented "[example]" inside a multi-line value is not a section (ConfigParser rules)
+python3 - "$C" <<'PY'
+import sys
+p = sys.argv[1]
+s = open(p).read().replace("[editor]  # my editor settings\n",
+                           "[editor]  # my editor settings\nnotes = example configuration\n    [example]\n", 1)
+open(p, "w").write(s)
+PY
+sed -i '/^font-size = /d' "$C"
+run apply --yes
+loads || die "upgrade broke a config with a multi-line value"
+[[ $(grep -ci '^minimap' "$C") == 1 ]]     || die "option after a multi-line value was duplicated"
+[[ $(grep -c '^font-size = ' "$C") == 1 ]] || die "font-size not inserted next to a multi-line value"
+grep -q '^    \[example\]$' "$C"           || die "the multi-line value was changed"
+
+# "[ editor ]" is a different section for ConfigParser: the option must land in a real [editor]
+cp "$C" "$root/config.before"
+printf '[ editor ]\nnote = spaced\n' > "$C"
+added=$(upgrade | tail -1)
+loads || die "upgrade broke a config with a spaced section name"
+python3 -c 'import configparser,sys; c=configparser.ConfigParser(interpolation=None); c.read(sys.argv[1]); sys.exit(0 if c.has_option("editor","breadcrumbs") and c.has_section(" editor ") else 1)' "$C" \
+    || die "options were added to '[ editor ]' instead of [editor] (got: $added)"
+cp "$root/config.before" "$C"
+
+# a config.ini that's already unreadable is never rewritten, and the user is told
+sed -i '/^font-size = /d' "$C"
+printf '\n[editor]\nfont = auto\n' >> "$C"            # duplicate section → ConfigParser error
+cp "$C" "$root/config.broken"
+out=$(upgrade)
+cmp -s "$root/config.broken" "$C"            || die "an unreadable config.ini was rewritten"
+grep -q "left unchanged" <<<"$out"           || die "no warning for an unreadable config.ini"
+cp "$root/config.before" "$C"
+
+# read / write errors warn and never stop apply (missing options just use their defaults)
+sed -i '/^font-size = /d' "$C"
+chmod 000 "$C"
+out=$(upgrade); chmod 644 "$C"
+grep -q "Couldn't read" <<<"$out"            || die "no warning when config.ini can't be read"
+chmod 555 "$(dirname "$C")"
+out=$(upgrade); chmod 755 "$(dirname "$C")"
+grep -q "Couldn't write" <<<"$out"           || die "no warning when config.ini can't be written"
+cp "$root/config.before" "$C"
 run theme
 python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$H/.local/share/org.kde.syntax-highlighting/themes/kate-plusplus-dark.theme"
 pass "apply + theme with overrides"
