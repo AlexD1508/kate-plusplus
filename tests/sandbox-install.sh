@@ -55,6 +55,60 @@ DESK=KDE run uninstall --yes
 [[ ! -s $H/.config/katerc ]] || ! grep -q 'Notepad++\|Kate++' "$H/.config/katerc" || die "fresh uninstall left Kate++ keys"
 pass "plasma install + clean uninstall"
 
+# --- Language menu touches only what Kate++ owns ---
+H=$root/menu; mkdir -p "$H/.local/share/kxmlgui5/katepart"
+cat > "$H/.local/share/kxmlgui5/katepart/katepart5ui.rc" <<'XML'
+<!DOCTYPE gui SYSTEM 'kpartgui.dtd'>
+<gui name="KatePartView" version="999">
+ <MenuBar>
+  <Menu name="tools"><text>Tools</text><Action name="tools_highlighting"/></Menu>
+  <Menu name="settings"><text>Settings</text></Menu>
+ </MenuBar>
+ <ActionProperties>
+  <Action name="tools_highlighting" shortcut="Ctrl+Alt+L" text="My Highlighting"/>
+ </ActionProperties>
+</gui>
+XML
+run install --yes
+grep -q 'text="&amp;Language"' "$H/.local/share/kxmlgui5/katepart/katepart5ui.rc" || die "Language menu not added"
+sed -i 's/^language-menu = true/language-menu = false/' "$H/.config/kate-plusplus/config.ini"
+run apply --yes
+run uninstall --yes
+python3 - "$H/.local/share/kxmlgui5/katepart/katepart5ui.rc" <<'PY' || die "the user's own entry was not restored exactly"
+import sys, xml.dom.minidom as m
+root = m.parse(sys.argv[1]).documentElement
+bar = next(n for n in root.childNodes if n.nodeType == 1 and n.tagName == "MenuBar")
+assert not any(n.nodeType == 1 and n.tagName == "Action" for n in bar.childNodes), "Kate++ entry left on the bar"
+a = [a for a in root.getElementsByTagName("Action") if a.parentNode.tagName == "ActionProperties"
+     and a.getAttribute("name") == "tools_highlighting"]
+assert len(a) == 1, a
+assert a[0].getAttribute("text") == "My Highlighting" and a[0].getAttribute("shortcut") == "Ctrl+Alt+L"
+assert not [k for k in a[0].attributes.keys() if k.startswith("kate-plusplus")], a[0].attributes.keys()
+PY
+pass "Language menu: only Kate++'s own entries are removed, the user's label comes back"
+
+# --- a shortcut file Kate++ created keeps shortcuts the user added later ---
+H=$root/created; mkdir -p "$H"
+run install --yes
+F="$H/.local/share/kxmlgui5/kate/kateui.rc"
+[[ -f $F ]] || die "Kate++ should have created kateui.rc"
+python3 - "$F" <<'PY'
+import sys, xml.dom.minidom as m
+doc = m.parse(sys.argv[1])
+props = doc.getElementsByTagName("ActionProperties")[0]
+a = doc.createElement("Action"); a.setAttribute("name", "view_new_view"); a.setAttribute("shortcut", "Ctrl+Alt+N")
+props.appendChild(a); open(sys.argv[1], "w").write(doc.toxml())
+PY
+run uninstall --yes
+[[ -f $F ]] || die "uninstall deleted a file that holds the user's own shortcut"
+grep -q 'view_new_view' "$F" || die "the user's own shortcut was removed"
+grep -q 'kate-plusplus=' "$F" && die "Kate++ entries left behind"
+H=$root/created2; mkdir -p "$H"
+run install --yes
+run uninstall --yes
+[[ ! -e $H/.local/share/kxmlgui5/kate/kateui.rc ]] || die "a Kate++-only file should be removed on uninstall"
+pass "files Kate++ created: removed when untouched, kept with the user's own shortcuts"
+
 # --- 3. user values Kate++ overwrites come back exactly, even without the full backup ---
 H=$root/restore; mkdir -p "$H/.config"
 printf '[General]\nTabbar Tab Limit=5\nShow Status Bar=false\nMy Own Key=1\n\n[KTextEditor Renderer]\nColor Theme=Dracula\n' > "$H/.config/katerc"

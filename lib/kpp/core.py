@@ -250,7 +250,7 @@ def installed_font(*families):
 DEFAULTS = {
     "general": {"profile": "auto"},
     "features": {"notepad-overlay": "false", "notepad-hotkey": "SUPER + J",
-                 "default-editor": "true", "backups": "true", "backup-keep-days": "2"},
+                 "default-editor": "true", "backups": "true", "language-menu": "true", "backup-keep-days": "2"},
     "theme": {"source": "auto", "accent": "", "background": "", "syntax-colors": "balanced"},
     "editor": {"font": "auto", "font-size": "11", "line-spacing": "1.15", "minimap": "true"},
 }

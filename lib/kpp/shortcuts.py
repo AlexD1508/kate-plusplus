@@ -100,9 +100,6 @@ def uninstall(kate, repo: Path, state: dict):
         info = before.get(f"{component}/{file}", {"existed": True, "actions": {}})
         if not path.exists():
             continue
-        if not info.get("existed"):
-            path.unlink()
-            continue
         doc = _load_or_new(path, component)
         props = _action_properties(doc)
         for el in list(props.getElementsByTagName("Action")):
@@ -114,7 +111,11 @@ def uninstall(kate, repo: Path, state: dict):
             else:
                 el.setAttribute("shortcut", old)
                 el.removeAttribute(MARK)
-        _save(path, doc)
+        user_entries = [a for a in props.getElementsByTagName("Action") if a.getAttribute(MARK) != "true"]
+        if not info.get("existed") and not user_entries:
+            path.unlink()      # Kate++ created it and nothing of the user's is in it
+        else:
+            _save(path, doc)   # keep shortcuts the user changed in Kate after installing
     remove_legacy_scheme(kate)
 
 

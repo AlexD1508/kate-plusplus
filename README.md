@@ -62,7 +62,7 @@ A **harmonised** syntax theme: strings green, numbers orange, functions blue. Ea
 <td valign="top">
 
 ### 🗂️ The Notepad++ layout
-Unlimited tabs with close buttons, double-click the tab bar for a new file, middle-click to close, **document map** (minimap), **function list**, folder-as-workspace, Markdown preview, colour swatches, rainbow brackets.
+A **Language** menu on the menu bar (pick Java for a quick draft, close Kate, and it's still a Java tab weeks later), unlimited tabs with close buttons, double-click the tab bar for a new file, middle-click to close, **document map** (minimap), **function list**, folder-as-workspace, Markdown preview, colour swatches, rainbow brackets.
 
 </td>
 <td valign="top">
@@ -202,7 +202,7 @@ Then `kate-plusplus apply`. With Caelestia or Plasma as the source, the theme re
 | Go to line · Find | <kbd>Ctrl</kbd>+<kbd>G</kbd> · <kbd>Ctrl</kbd>+<kbd>F</kbd>, <kbd>F3</kbd> | same |
 | Quit | your window manager's close key | <kbd>Ctrl</kbd>+<kbd>Q</kbd> |
 
-Every tool is also in **Tools → Scripts → Notepad++ Tools** and in the command bar (<kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>I</kbd>, then type its name). The **Language** menu you know from Notepad++ is **Tools → Highlighting**, or click the language name in the status bar.
+Every tool is also in **Tools → Scripts → Notepad++ Tools** and in the command bar (<kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>I</kbd>, then type its name). The **Language** menu works like Notepad++'s: it sits on the menu bar with every language Kate knows, grouped by kind. You can also click the language name in the status bar for a searchable list.
 
 <br>
 
