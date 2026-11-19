@@ -408,7 +408,7 @@ def upgrade_user_config() -> list[str]:
              f"Missing options use their defaults: {', '.join(added)}")
         return []
     try:
-        atomic_write(USER_CONFIG, text)
+        atomic_write(USER_CONFIG.resolve(), text)   # a symlinked config (dotfiles) stays a symlink
     except OSError as exc:
         warn(f"Couldn't write {USER_CONFIG} to add new options ({exc}); using their defaults")
         return []

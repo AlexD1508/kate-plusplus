@@ -360,9 +360,15 @@ H=$root/upgrade; mkdir -p "$H/.config"
 printf '[General]\nTabbar Tab Limit=5\n\n[KTextEditor Renderer]\nColor Theme=Dracula\n' > "$H/.config/katerc"
 cp "$H/.config/katerc" "$root/katerc.upgrade"
 run install --yes
-python3 - "$H/.local/state/kate-plusplus/state.json" <<'PY'
+# what 1.0.x left behind: no records, and none of the keys only newer versions write
+env -i HOME="$H" PATH=/usr/bin:/bin KPP_TEST=1 PYTHONPATH=lib python3 - "$H/.local/state/kate-plusplus/state.json" <<'PY'
 import json, sys
-p = sys.argv[1]; s = json.load(open(p)); s.pop("katerc_before", None); json.dump(s, open(p, "w"))
+from kpp import cli, core
+p = sys.argv[1]; s = json.load(open(p)); records = s.pop("katerc_before")
+legacy = {f"{g}\t{k}" for g, k in cli.managed_keys()}
+core.merge_rc(core.XDG_CONFIG / "katerc", [(*rec.split("\t", 1), "@delete" if old is None else old)
+                            for rec, old in records.items() if rec not in legacy])
+json.dump(s, open(p, "w"))
 PY
 run apply --yes                                                        # 1.0.x → this version
 rm "$H/.local/state/kate-plusplus/katerc.before-kate-plusplus"
@@ -424,6 +430,41 @@ run uninstall --yes
 grep -q '^Show Symbol In Navigation Bar=false$' "$H/.config/katerc" || die "fallback uninstall lost the user's own breadcrumb symbol setting"
 grep -q '^Show Url Nav Bar=' "$H/.config/katerc" && die "fallback uninstall left Show Url Nav Bar (1.0.x wrote it too)"
 pass "fallback uninstall restores breadcrumb settings exactly"
+
+# --- a key only newer versions write is recorded from the live katerc, not the old backup ---
+H=$root/live-record; mkdir -p "$H/.config"
+printf '[General]\nShow Symbol In Navigation Bar=true\n' > "$H/.config/katerc"     # in the pre-install backup
+run install --yes
+python3 - "$H/.local/state/kate-plusplus/state.json" <<'PY'
+import json, sys        # pretend this install predates breadcrumbs: no record for the symbol key yet
+p = sys.argv[1]; s = json.load(open(p)); s["katerc_before"].pop("[General]\tShow Symbol In Navigation Bar"); json.dump(s, open(p, "w"))
+PY
+sed -i 's/^Show Symbol In Navigation Bar=.*/Show Symbol In Navigation Bar=false/' "$H/.config/katerc"   # user's later choice
+run apply --yes                          # records the new key (the backup still exists here)
+rm "$H/.local/state/kate-plusplus/katerc.before-kate-plusplus"   # as if the user declined the full restore
+run uninstall --yes
+python3 - "$H/.config/katerc" <<'PY' || die "uninstall restored the old backup's value, not the user's later one"
+import sys
+assert "Show Symbol In Navigation Bar=false" in open(sys.argv[1]).read()
+PY
+pass "newer keys are recorded from the live settings"
+
+# --- a symlinked config.ini (dotfiles) stays a symlink when new options are added ---
+H=$root/cfg-link; mkdir -p "$H/.config" "$H/dotfiles"
+run install --yes
+mv "$H/.config/kate-plusplus/config.ini" "$H/dotfiles/kpp.ini"
+ln -s "$H/dotfiles/kpp.ini" "$H/.config/kate-plusplus/config.ini"
+sed -i '/^breadcrumbs = /d' "$H/dotfiles/kpp.ini"
+run apply --yes
+[[ -L $H/.config/kate-plusplus/config.ini ]] || die "adding new options replaced the symlinked config.ini"
+grep -q '^breadcrumbs = ' "$H/dotfiles/kpp.ini" || die "new option not added to the symlink's target"
+
+# --- an invalid breadcrumbs value warns and uses the default ---
+sed -i 's/^breadcrumbs = .*/breadcrumbs = maybe/' "$H/dotfiles/kpp.ini"
+out=$(env -i HOME="$H" PATH=/usr/bin:/bin KPP_TEST=1 ./bin/kate-plusplus apply --yes 2>&1)
+grep -q "breadcrumbs = maybe isn't true or false" <<<"$out" || die "invalid breadcrumbs value did not warn"
+grep -q '^Show Url Nav Bar=true' "$H/.config/katerc" || die "invalid breadcrumbs value did not fall back to true"
+pass "symlinked config.ini kept; invalid breadcrumbs value warns"
 
 # --- legacy + 'theme' before 'apply', no backup: partial records must not count as complete ---
 H=$root/partial; mkdir -p "$H/.config"

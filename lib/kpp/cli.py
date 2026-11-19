@@ -339,11 +339,15 @@ def record_katerc(kate, state, settings):
     state, without changing katerc yet."""
     _init_records(state)
     before = state["katerc_before"]
+    legacy = set(managed_keys())
     new = False
     for group, key, _ in settings:
         k = f"{group}\t{key}"
         if k not in before:
-            source = PRE_INSTALL if PRE_INSTALL.exists() else kate.katerc
+            # keys older versions wrote: the live value may be Kate++'s own, so take the
+            # pre-install backup; keys only newer versions write: the live value is the user's
+            # (possibly changed since the backup was made)
+            source = PRE_INSTALL if PRE_INSTALL.exists() and (group, key) in legacy else kate.katerc
             before[k] = core.read_rc_value(source, group, key)
             new = True
     if new:
@@ -562,14 +566,19 @@ def kate_settings(cfg, kate, theme_name, state):
     except ValueError:
         warn("font-size / line-spacing must be numbers; using 11 / 1.15")
         size, spacing = 11, 1.15
+    crumbs = cfg.get("editor", "breadcrumbs").strip().lower()
+    if crumbs not in ("true", "false", "yes", "no", "on", "off", "1", "0"):
+        warn(f"breadcrumbs = {crumbs} isn't true or false; using true")
+        crumbs = "true"
+    crumbs = str(crumbs in ("true", "yes", "on", "1")).lower()
     settings += [
         (r, "Text Font", f"{font},{size},-1,2,400,0,0,0,0,0,0,0,0,0,0,1"),
         (r, "Line Height Multiplier", f"{spacing:g}"),
         ("[KTextEditor View]", "Scroll Bar MiniMap", str(cfg.flag("editor", "minimap")).lower()),
         # Breadcrumbs: Kate's navigation bar (folder › file) plus one crumb for the symbol at
         # the cursor (Kate shows it when a language server provides document symbols)
-        ("[General]", "Show Url Nav Bar", str(cfg.flag("editor", "breadcrumbs")).lower()),
-        ("[General]", "Show Symbol In Navigation Bar", str(cfg.flag("editor", "breadcrumbs")).lower()),
+        ("[General]", "Show Url Nav Bar", crumbs),
+        ("[General]", "Show Symbol In Navigation Bar", crumbs),
     ]
     if not cfg.flag("editor", "ligatures"):
         settings.append((r, "Text Font Features", NO_LIGATURES))
