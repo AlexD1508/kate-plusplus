@@ -8,4 +8,6 @@
   <Action name="delete_line" shortcut="Ctrl+Shift+L"/>
   <Action name="tools_lowercase" shortcut="Ctrl+U"/>
   <Action name="tools_uppercase" shortcut="Ctrl+Shift+U"/>
+  <!-- frees Ctrl+T for "new tab"; Transpose Characters stays in Edit menu / command bar -->
+  <Action name="transpose_char" shortcut=""/>
 </overrides>

@@ -4,6 +4,12 @@ All notable changes to Kate++ are listed here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- <kbd>Ctrl</kbd>+<kbd>T</kbd> opens a new tab (Ctrl+N still works). Transpose Characters
+  moves off Ctrl+T and stays available in the command bar.
+
 ## [1.0.1] — 2026-11-19
 
 ### Fixed

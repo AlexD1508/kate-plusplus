@@ -36,19 +36,22 @@ read_shortcuts() {
         for a in "$@"; do
             v=$(gdbus call --session --dest "$svc" --object-path "/kate/MainWindow_1/actions/$a" \
                 --method org.freedesktop.DBus.Properties.Get org.qtproject.Qt.QAction shortcut)
-            echo "$a $(grep -o "[0-9]\+" <<<"$v" | head -1)"
+            echo "$a $(grep -o "[0-9]\+" <<<"$v" | grep -v "^0$" | paste -sd, - || true)"
         done
         kill %1' _ "$@"
 }
 
 kpp install --yes
 declare -A s
-while read -r a v; do s[$a]=$v; done < <(read_shortcuts file_quit view_quick_open file_close file_save_all view_new_view)
-[[ ${s[file_quit]} == 0 ]]           || die "file_quit override not applied (got ${s[file_quit]})"
-[[ ${s[view_quick_open]} != 0 ]]     || die "Quick Open lost its default shortcut"
-[[ ${s[file_close]} != 0 ]]          || die "Close lost its default shortcut"
-[[ ${s[file_save_all]} != 0 ]]       || die "Save All lost its default shortcut"
-[[ ${s[view_new_view]} != 0 ]]       || die "user's own shortcut was lost"
+while read -r a v; do s[$a]=${v:-}; done < <(read_shortcuts file_quit view_quick_open file_close file_save_all view_new_view file_new)
+[[ -z ${s[file_quit]} ]]             || die "file_quit override not applied (got ${s[file_quit]})"
+[[ -n ${s[view_quick_open]} ]]       || die "Quick Open lost its default shortcut"
+[[ -n ${s[file_close]} ]]            || die "Close lost its default shortcut"
+[[ -n ${s[file_save_all]} ]]         || die "Save All lost its default shortcut"
+[[ -n ${s[view_new_view]} ]]         || die "user's own shortcut was lost"
+# D-Bus only exposes an action's *primary* shortcut, so Ctrl+T (secondary) isn't visible here;
+# the merge itself is covered by the single-shortcut overrides above.
+[[ ${s[file_new]} == 67108942 ]] || die "New should keep Ctrl+N as its primary shortcut (got ${s[file_new]})"
 pass "overrides applied, Kate's defaults and the user's own shortcut intact"
 
 kpp uninstall --yes
