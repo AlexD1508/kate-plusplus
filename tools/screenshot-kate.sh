@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Take "before" (stock Kate) and "after" (Kate++) screenshots on an invisible
+# Take "before" (stock Kate) and "after" (Kate++) fullscreen (opaque) screenshots on an invisible
 # Hyprland headless monitor, using throw-away config sandboxes so the real Kate
-# session is never touched. Hyprland only.
+# session is never touched: each Kate also runs on its own private D-Bus, so it can never
+# hand files to a Kate you have open. Hyprland only.
 #
 #   tools/screenshot-kate.sh <out-dir> [files to open…]
 set -euo pipefail
@@ -48,7 +49,7 @@ sandbox() {  # $1 = before|after
 shoot() {  # $1 = before|after
     local d=$work/$1 session_args=""
     [[ $1 == after ]] && session_args="-s Notepad"
-    hyprctl dispatch "hl.dsp.exec_cmd(\"env XDG_CONFIG_HOME=$d/config XDG_DATA_HOME=$d/data XDG_STATE_HOME=$d/state XDG_CACHE_HOME=$d/cache kate -n $session_args ${files[*]}\", { workspace = \"$ws silent\" })" >/dev/null
+    hyprctl dispatch "hl.dsp.exec_cmd(\"env XDG_CONFIG_HOME=$d/config XDG_DATA_HOME=$d/data XDG_STATE_HOME=$d/state XDG_CACHE_HOME=$d/cache dbus-run-session -- kate -n $session_args ${files[*]}\", { workspace = \"$ws silent\", fullscreen = true })" >/dev/null
     sleep 9
     grim -o "$name" "$out/$1.png"
     for p in $(pgrep -x kate); do
