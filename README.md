@@ -160,9 +160,19 @@ background =               # e.g. #1a1b26
 syntax-colors = balanced   # soft | balanced | vivid
 ```
 
+**The whole window matches too.** Pick Rosé Pine or Dracula and Kate's menus, tabs, sidebars and status bar take on that theme's colours, not just the code. (For themes bundled with Kate, like Dracula, Kate++ reads their colours with `ksyntaxhighlighter6`; without it those keep your desktop's window colours.) With Caelestia or Plasma the window already follows your desktop. Set `window-colors = system` to opt out; a scheme you pick yourself in Kate (*Settings → Window Color Scheme*) after installing is never overwritten. (On first install Kate++ replaces Kate's previous window scheme so everything matches; uninstall puts it back.)
+
 <sub>`accent`, `background` and `syntax-colors` tune the adaptive Kate++ themes (`auto`, `caelestia`, `plasma`, `dark`, `light`). Named themes such as Rosé Pine or Dracula keep their designers' colours.</sub>
 
 <p align="center"><img src="assets/intensity.png" width="900" alt="soft, balanced and vivid syntax colours"></p>
+
+#### 🔍 Try them all, live
+
+```bash
+kate-plusplus theme --pick
+```
+
+Browse every theme (Kate++'s own, the popular ones, and all of Kate's built-ins) with a real-colour code preview right in your terminal. Previews of Kate's built-in themes use `ksyntaxhighlighter6` (or `kate-syntax-highlighter`); without it you see an install hint instead, and applying them still works. Kate++'s own and the popular themes always preview. Arrow keys or <kbd>j</kbd>/<kbd>k</kbd> to browse, <kbd>Enter</kbd> to apply, <kbd>q</kbd> to cancel. It's also in the `kate-plusplus` menu.
 
 #### 🌈 Popular themes, ready to go
 
@@ -181,6 +191,20 @@ Prefer a classic? Put its name in `source`. Kate++ adds ten favourites that Kate
 A family name such as `rose-pine` picks the dark or light variant to match your system; a full name such as `Rosé Pine Moon` (or `rose-pine-main`) picks exactly that one. **Every theme that ships with Kate works too**: `Catppuccin Mocha`, `Dracula`, `Nord`, `Tokyo Night`, `gruvbox Dark`, `Atom One Dark`, `Solarized Light`, `Monokai`, `ayu Mirage`, … Capitals and spaces don't matter.
 
 Then `kate-plusplus apply`. With Caelestia or Plasma as the source, the theme regenerates by itself whenever your colours change.
+
+<br>
+
+#### 🔬 Smarter highlighting
+
+With a language server installed, Kate++ turns on Kate's meaning-aware extras: **semantic highlighting** (parameters, types, constants and functions coloured by what they *are*, not just how they look), **inline hints** (parameter names and inferred types in soft grey), hover docs, signature help and error underlines. Each extra appears only where the server supports it: clangd and rust-analyzer offer all of them, while Kate's default Python server (pylsp) gives completion, hover, signatures and errors but no semantic colours or inline hints. For those in Python, install `basedpyright` and point Kate's *LSP Client → User Server Settings* at it:
+
+```json
+{ "servers": { "python": { "command": ["basedpyright-langserver", "--stdio"] } } }
+```
+
+`kate-plusplus doctor` checks for the servers Kate starts by default (pylsp, clangd, typescript-language-server, rust-analyzer, …) and gives a one-line install hint for missing popular ones. A server you configured yourself, such as basedpyright, isn't detected there. Setting `smart-highlighting = false` under `[editor]` makes Kate++ stop managing these options; it doesn't switch them back off. To disable them, untick them in Kate's *Settings → Configure Kate → LSP Client* after applying.
+
+<sub>Language servers work on saved files (like in VS Code). Unsaved drafts still get regular highlighting, bracket matching, folding and word completion.</sub>
 
 <br>
 
@@ -214,6 +238,7 @@ Run `kate-plusplus` on its own for a small menu, or:
 |---|---|
 | `kate-plusplus config` | open your settings, then apply them |
 | `kate-plusplus apply` | re-apply `config.ini` |
+| `kate-plusplus theme --pick` | browse all themes with a live preview and apply one |
 | `kate-plusplus theme` | regenerate the editor theme |
 | `kate-plusplus backup` | snapshot sessions & unsaved tabs now |
 | `kate-plusplus restore` | pick a snapshot and bring it back |
@@ -249,6 +274,17 @@ Kate++ only ever changes the individual settings it manages. Everything else in 
 > 1. **Stash:** closing Kate keeps every unsaved tab and edit for next time.
 > 2. **Snapshots** every 10 minutes (only when something changed, kept 2 days): `kate-plusplus restore` brings them back after a crash or power cut.
 > 3. **Swap files:** Kate's own recovery for whatever you were typing at that very moment.
+
+</details>
+
+<details>
+<summary>⏱️&nbsp; <b>Can it save files automatically, like VS Code?</b></summary>
+<br>
+
+> **Yes, opt-in:** set `auto-save = focus` or `auto-save = 30` in the `[editor]` section of `config.ini`, then `kate-plusplus apply`.
+> - `focus` saves a modified tab whenever its editor loses keyboard focus: when you switch to another app, but also when you move into another part of Kate, such as the find bar or the file tree.
+> - `30` also saves 30 seconds after your last edit.
+> - Auto-save applies to every tab that has a file path on your local disk, including a path you opened that doesn't exist yet: Kate creates that file on the first auto-save. Untitled tabs are never auto-saved; they keep living in the stash.
 
 </details>
 
