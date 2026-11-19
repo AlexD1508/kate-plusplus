@@ -50,6 +50,24 @@ class PickerTest(unittest.TestCase):
         resolver.assert_called_once()
         self.assertEqual(got, cli.adaptive_theme("light", "", "", "balanced"))
 
+    def test_theme_is_written_even_while_kate_runs(self):
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as tmp:
+            kate = core.Kate("native", ["kate"], Path(tmp), Path(tmp))
+            kate.katerc.write_text("[KTextEditor Renderer]\nColor Theme=Breeze Dark\n")
+            cfg = core.Config()
+            cfg.parser.read_dict({"theme": {"source": "Dracula"}})
+            args = mock.Mock(pick=False)
+            with mock.patch.object(cli, "need_kate", return_value=kate), \
+                    mock.patch.object(core, "load_config", return_value=cfg), \
+                    mock.patch.object(core, "kate_running", return_value=True), \
+                    mock.patch.object(cli, "build_themes", return_value="Dracula"), \
+                    mock.patch.object(cli, "step"), mock.patch.object(cli, "info") as info:
+                cli.do_theme(args)
+            self.assertIn("Color Theme=Dracula", kate.katerc.read_text())
+            info.assert_called_once()
+
     def test_layout_fits_small_terminals(self):
         for height in (24, 30, 18, 12):
             rows, preview_lines = picker._layout(height)
