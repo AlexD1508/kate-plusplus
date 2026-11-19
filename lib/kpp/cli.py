@@ -8,11 +8,12 @@ import os
 import shutil
 import sys
 import tarfile
+import unicodedata
 import time
 from datetime import datetime
 from pathlib import Path
 
-from . import core, menus, shortcuts, theme
+from . import core, menus, ports, shortcuts, theme
 from .core import (APP, BACKUP_DIR, BIN_LINK, CAELESTIA_SCHEME, DIM, BOLD, RESET, ACCENT,
                    GREEN, YELLOW, RED, KDEGLOBALS, REPO, STATE_DIR, USER_CONFIG, VERSION,
                    XDG_CONFIG, XDG_DATA, banner, info, section, step, warn, fail, ask, have, run)
@@ -60,8 +61,48 @@ def resolve_profile(cfg) -> str:
     return "caelestia" if core.is_caelestia() else "generic"
 
 
+def _slug(text):
+    # decompose accents (é → e + ◌́, or already-decomposed input) and drop the marks
+    t = "".join(ch for ch in unicodedata.normalize("NFKD", text) if not unicodedata.combining(ch))
+    t = t.strip().lower()
+    for quote in ("'", "\u2019", "\u2018", "\u02bc", "`", "\u00b4"):   # ' ’ ‘ ʼ ` ´
+        t = t.replace(quote, "")
+    return "-".join(t.replace("_", " ").replace("-", " ").split())
+
+
+def _key(text):
+    """Comparison key: case, accents, spaces, hyphens and underscores don't matter."""
+    return _slug(text).replace("-", "")
+
+
+# Themes bundled with Kate (KSyntaxHighlighting 6). Used when no listing tool is installed.
+KATE_THEMES = (
+    "Atom One Dark", "Atom One Light", "Breeze Dark", "Breeze Light", "Catppuccin Frappé",
+    "Catppuccin Latte", "Catppuccin Macchiato", "Catppuccin Mocha", "Dracula", "Falcon",
+    "GitHub Dark", "GitHub Light", "Homunculus", "Monokai", "Nord", "Oblivion", "Printing",
+    "Radical", "Solarized Dark", "Solarized Light", "Tokyo Night", "Tokyo Night Light",
+    "Tokyo Night Storm", "VSCodium Dark", "Vim Dark", "ayu Dark", "ayu Light", "ayu Mirage",
+    "gruvbox Dark", "gruvbox Light",
+)
+
+
+def kate_builtin_themes():
+    """Theme names Kate itself ships: asked from KSyntaxHighlighting when possible."""
+    for tool in ("ksyntaxhighlighter6", "kate-syntax-highlighter"):
+        if have(tool):
+            out = run(tool, "--list-themes").stdout or ""
+            names = [n.strip() for n in out.splitlines()
+                     if n.strip() and not n.strip().startswith("Kate++")]
+            if names:
+                return names
+    return list(KATE_THEMES)
+
+
 def resolve_theme_source(cfg, profile) -> str | None:
-    src = cfg.get("theme", "source").lower()
+    """Returns a Kate++ source (caelestia/plasma/dark/light), 'port:<slug>',
+    'kate:<Theme Name>', or None to leave Kate's colours alone."""
+    raw = cfg.get("theme", "source").strip()
+    src = _slug(raw)
     if src == "none":
         return None
     if src == "auto":
@@ -76,10 +117,22 @@ def resolve_theme_source(cfg, profile) -> str | None:
     if src == "plasma" and not (KDEGLOBALS.is_file() and theme.plasma_ui(KDEGLOBALS)):
         warn("theme source 'plasma' chosen but no KDE colours found; using Kate++ Dark")
         return "dark"
-    if src not in THEME_NAMES:
-        warn(f"unknown theme source '{src}'; using auto")
-        return resolve_theme_source(core.Config(), profile)
-    return src
+    if src in THEME_NAMES:
+        return src
+    key = _key(raw)
+    for family, (dark_variant, light_variant) in ports.FAMILIES.items():
+        if key == _key(family):
+            return "port:" + (dark_variant if core.system_prefers_dark() else light_variant)
+    for slug, (name, *_rest) in ports.PORTS.items():
+        if key in (_key(slug), _key(name)) or key in map(_key, ports.ALIASES.get(slug, ())):
+            return "port:" + slug
+    builtin = kate_builtin_themes()
+    for name in builtin:
+        if _key(name) == key:
+            return "kate:" + name
+    warn(f"theme '{raw}' not found; using auto. Try one of: " + ", ".join(
+        sorted({*(n for n, *_ in ports.PORTS.values()), *builtin}, key=str.lower)))
+    return resolve_theme_source(core.Config(), profile)
 
 
 def theme_path(kate, slug):
@@ -104,6 +157,8 @@ def build_themes(cfg, kate, source) -> str | None:
                 else:
                     background = ""
 
+    for slug in ports.PORTS:
+        theme.write_theme(theme_path(kate, slug), ports.build(slug))
     for variant in ("dark", "light"):
         ui = theme.static_ui(variant)
         if source == variant:
@@ -119,7 +174,17 @@ def build_themes(cfg, kate, source) -> str | None:
         ui = theme.apply_overrides(theme.plasma_ui(KDEGLOBALS), accent, background)
         theme.write_theme(theme_path(kate, "plasma"),
                           theme.build_theme(THEME_NAMES["plasma"], ui, intensity))
-    return THEME_NAMES.get(source) if source else None
+    return theme_display_name(source)
+
+
+def theme_display_name(source):
+    if not source:
+        return None
+    if source.startswith("port:"):
+        return ports.PORTS[source[5:]][0]
+    if source.startswith("kate:"):
+        return source[5:]
+    return THEME_NAMES.get(source)
 
 
 # ======================================================================= install / apply
@@ -170,7 +235,66 @@ def ensure_sessions(kate):
     step(f"Memory: \"{SESSION}\" session with stash (no save prompts, tabs survive restarts)")
 
 
-def kate_settings(cfg, kate, theme_name):
+PRE_INSTALL = STATE_DIR / "katerc.before-kate-plusplus"
+
+
+def managed_keys():
+    """Every katerc key Kate++ may set: config/kate.ini plus the ones built from config.ini."""
+    r = "[KTextEditor Renderer]"
+    keys = [(g, k) for g, k, _ in core.read_settings_ini(REPO / "config/kate.ini")]
+    return keys + [(r, "Text Font"), (r, "Line Height Multiplier"), (r, "Color Theme"),
+                   (r, "Auto Color Theme Selection"), ("[KTextEditor View]", "Scroll Bar MiniMap")]
+
+
+def set_katerc(kate, state, settings):
+    """Write Kate settings, remembering each key's value from before Kate++ first touched it,
+    so uninstall can put back exactly that (or remove the key if there was none).
+
+    The original comes from the pre-install backup when there is one, and the record is saved
+    *before* katerc changes, so an error in between can't lose it. `katerc_complete` says
+    whether the records describe the true originals: always for new installs; for upgrades
+    from versions without records only when the pre-install backup exists (then every
+    managed key is seeded from it at once)."""
+    if "katerc_before" not in state:
+        state["katerc_before"] = {}
+        legacy = bool(state.get("version"))          # installed by a version without records
+        if legacy and PRE_INSTALL.exists():
+            for group, key in managed_keys():
+                state["katerc_before"][f"{group}\t{key}"] = core.read_rc_value(PRE_INSTALL, group, key)
+        state["katerc_complete"] = not legacy or PRE_INSTALL.exists()
+        core.save_state(state)
+    before = state["katerc_before"]
+    new = False
+    for group, key, _ in settings:
+        k = f"{group}\t{key}"
+        if k not in before:
+            source = PRE_INSTALL if PRE_INSTALL.exists() else kate.katerc
+            before[k] = core.read_rc_value(source, group, key)
+            new = True
+    if new:
+        core.save_state(state)
+    core.merge_rc(kate.katerc, settings)
+
+
+def restore_katerc(kate, state) -> bool:
+    """Put recorded values back. Returns False when there were no records to restore from."""
+    before = state.get("katerc_before", {})
+    if not before or not state.get("katerc_complete", False):
+        return False
+    changes = []
+    for k, old in before.items():
+        group, key = k.split("\t", 1)
+        changes.append((group, key, "@delete" if old is None else old))
+    core.merge_rc(kate.katerc, changes)
+    return True
+
+
+def remove_managed_katerc(kate):
+    """Fallback without complete records or a backup: remove the settings Kate++ manages."""
+    core.merge_rc(kate.katerc, [(g, k, "@delete") for g, k in managed_keys()])
+
+
+def kate_settings(cfg, kate, theme_name, state):
     settings = core.read_settings_ini(REPO / "config/kate.ini")
     r = "[KTextEditor Renderer]"
     font = cfg.get("editor", "font")
@@ -190,7 +314,7 @@ def kate_settings(cfg, kate, theme_name):
     ]
     if theme_name:
         settings += [(r, "Auto Color Theme Selection", "false"), (r, "Color Theme", theme_name)]
-    core.merge_rc(kate.katerc, settings)
+    set_katerc(kate, state, settings)
     step(f"Editor: {font} {size}pt · tabs, minimap, function list, macros, stash")
 
 
@@ -406,11 +530,10 @@ def do_apply(args, first_install=False):
     core.wait_for_kate_closed(kate)
 
     section("Safety first")
-    pre = STATE_DIR / "katerc.before-kate-plusplus"
-    if kate.katerc.exists() and not pre.exists():
-        pre.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(kate.katerc, pre)
-        step(f"Original Kate settings saved  {DIM}{pre}{RESET}")
+    if kate.katerc.exists() and not PRE_INSTALL.exists() and not core.load_state():
+        PRE_INSTALL.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(kate.katerc, PRE_INSTALL)
+        step(f"Original Kate settings saved  {DIM}{PRE_INSTALL}{RESET}")
     snap = make_backup(kate, force=True, label="pre-apply")
     if snap:
         step(f"Snapshot of sessions & tabs   {DIM}{snap.name}{RESET}")
@@ -423,9 +546,12 @@ def do_apply(args, first_install=False):
     ensure_sessions(kate)
     source = resolve_theme_source(cfg, profile)
     theme_name = build_themes(cfg, kate, source)
-    kate_settings(cfg, kate, theme_name)
+    kate_settings(cfg, kate, theme_name, state)
     if theme_name:
-        step(f"Theme: {theme_name}  {DIM}({cfg.get('theme', 'syntax-colors')} syntax colours){RESET}")
+        detail = (f"{cfg.get('theme', 'syntax-colors')} syntax colours" if source in THEME_NAMES
+                  else "ships with Kate" if source.startswith("kate:")
+                  else f"by {ports.designer(source[5:])}")
+        step(f"Theme: {theme_name}  {DIM}({detail}){RESET}")
 
     section("System")
     overlay = False
@@ -478,8 +604,10 @@ def do_theme(args):
         if core.kate_running(kate):
             info(f"Restart Kate (or pick {name} in Settings → Configure Kate → Color Themes)")
         else:
-            core.merge_rc(kate.katerc, [("[KTextEditor Renderer]", "Auto Color Theme Selection", "false"),
-                                        ("[KTextEditor Renderer]", "Color Theme", name)])
+            state = core.load_state()
+            set_katerc(kate, state, [("[KTextEditor Renderer]", "Auto Color Theme Selection", "false"),
+                                     ("[KTextEditor Renderer]", "Color Theme", name)])
+            core.save_state(state)
 
 
 # ======================================================================= backups
@@ -632,8 +760,10 @@ def do_doctor(args):
     (ok if stash else bad)("Stash (no save prompts, tabs survive restarts)")
     t = core.read_rc_value(kate.katerc, "[KTextEditor Renderer]", "Color Theme")
     src = state.get("theme_source")
-    if src:
-        f = theme_path(kate, src)
+    if src and src.startswith("kate:"):
+        (ok if t == src[5:] else meh)(f"Theme {t}  {DIM}(ships with Kate){RESET}")
+    elif src:
+        f = theme_path(kate, src.split(":", 1)[-1])
         (ok if f.exists() else bad)(f"Theme {t}  {DIM}({f.name}){RESET}")
     else:
         meh("Theme: Kate's own (source = none)")
@@ -708,16 +838,14 @@ def do_uninstall(args):
     for f in (kate.data / "org.kde.syntax-highlighting/themes").glob(f"{APP}-*.theme"):
         f.unlink()
     (XDG_DATA / "icons/hicolor/scalable/apps/kate-plusplus.svg").unlink(missing_ok=True)
-    pre = STATE_DIR / "katerc.before-kate-plusplus"
-    if pre.exists() and (args.yes or ask("Put your Kate settings back to how they were before Kate++?")):
-        shutil.copy2(pre, kate.katerc)
+    if PRE_INSTALL.exists() and (args.yes or ask("Put your Kate settings back to how they were before Kate++?")):
+        shutil.copy2(PRE_INSTALL, kate.katerc)
         step("Original Kate settings restored")
-    else:  # fresh Kate before Kate++: take back every key we set
-        ours = core.read_settings_ini(REPO / "config/kate.ini")
-        r = "[KTextEditor Renderer]"
-        extra = [(r, "Text Font"), (r, "Line Height Multiplier"), (r, "Color Theme"),
-                 (r, "Auto Color Theme Selection"), ("[KTextEditor View]", "Scroll Bar MiniMap")]
-        core.merge_rc(kate.katerc, [(g, k, "@delete") for g, k, _ in ours] + [(g, k, "@delete") for g, k in extra])
+    elif restore_katerc(kate, state):  # exactly what each key was before Kate++
+        step("Your previous Kate settings restored")
+    else:                               # older install without records and without a backup
+        remove_managed_katerc(kate)
+        step("Kate++ settings removed (no record of your earlier values was available)")
     shutil.rmtree(STATE_DIR, ignore_errors=True)
     if BIN_LINK.is_symlink():
         BIN_LINK.unlink()
@@ -758,7 +886,7 @@ def do_menu(args):
             do_apply(args, first_install=True)
         return
     print(f"  {DIM}profile{RESET} {state.get('profile')}   {DIM}theme{RESET} "
-          f"{THEME_NAMES.get(state.get('theme_source') or '', 'Kate default')}   "
+          f"{theme_display_name(state.get('theme_source')) or 'Kate default'}   "
           f"{DIM}overlay{RESET} {state.get('overlay_hotkey') or 'off'}\n")
     items = [("Apply settings", "re-apply config.ini", do_apply),
              ("Edit settings", "open config.ini", do_config),

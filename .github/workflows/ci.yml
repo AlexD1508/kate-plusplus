@@ -43,10 +43,16 @@ jobs:
                       t = T.build_theme("t", ui, inten)
                       bg = t["editor-colors"]["BackgroundColor"][1:]
                       for k, s in t["text-styles"].items():
-                          if "background-color" in s: continue
-                          c = T.contrast(s["text-color"][1:], bg)
+                          c = T.contrast(s["text-color"][1:], s.get("background-color", "#" + bg)[1:])
                           floor = 4.5
                           assert c >= floor, (src, inten, accent, k, round(c, 2))
+          from kpp import ports
+          for slug in ports.PORTS:
+              t = ports.build(slug)
+              bg = t["editor-colors"]["BackgroundColor"][1:]
+              for k, s in t["text-styles"].items():
+                  c = T.contrast(s["text-color"][1:], s.get("background-color", "#" + bg)[1:])
+                  assert c >= 4.5, (slug, k, round(c, 2))
           print("contrast OK")
           PY
 

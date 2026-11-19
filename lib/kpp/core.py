@@ -168,6 +168,8 @@ def detect_kate() -> Kate | None:
 
 
 def kate_running(kate: Kate) -> bool:
+    if os.environ.get("KPP_TEST"):   # tests use a throw-away $HOME; a real running Kate is unrelated
+        return False
     if kate.kind == "flatpak":
         return "org.kde.kate" in (run("flatpak", "ps", "--columns=application").stdout or "")
     return run("pgrep", "-x", "kate").returncode == 0

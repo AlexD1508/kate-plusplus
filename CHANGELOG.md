@@ -12,6 +12,14 @@ All notable changes to Kate++ are listed here. The format follows
 
 ### Fixed
 - Uninstall keeps shortcut changes you made in Kate after installing Kate++.
+- **Ten popular themes** Kate doesn't ship, built from their official palettes and lifted to
+  WCAG AA contrast: Rosé Pine (Main, Moon, Dawn), Kanagawa (Wave, Dragon, Lotus),
+  Everforest (Dark, Light), Night Owl and Synthwave '84.
+- `source` in `config.ini` accepts **any theme by name**, including every theme that ships
+  with Kate (`Catppuccin Mocha`, `Dracula`, `Nord`, …). Family names (`rose-pine`,
+  `kanagawa`, `everforest`) follow your system's light/dark preference.
+- Uninstall now restores **exactly** the value each Kate setting had before Kate++, even
+  when you skip restoring the full settings backup (previously those keys were deleted).
 
 ## [1.0.1] — 2026-11-19
 
