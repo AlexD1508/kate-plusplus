@@ -51,6 +51,14 @@ while read -r a v; do s[$a]=$v; done < <(read_shortcuts file_quit view_quick_ope
 [[ ${s[view_new_view]} != 0 ]]       || die "user's own shortcut was lost"
 pass "overrides applied, Kate's defaults and the user's own shortcut intact"
 
+# Language menu: Kate writes its full menu file on first start, the background job adds the menu
+kpp maintain --quiet
+grep -q '<Action name="tools_highlighting" kate-plusplus="true"/>' "$H/.local/share/kxmlgui5/katepart/katepart5ui.rc" \
+    || die "Language menu was not added to the menu bar"
+read_shortcuts file_close >/dev/null    # Kate starts again with the menu in place
+grep -q 'text="&amp;Language"' "$H/.local/share/kxmlgui5/katepart/katepart5ui.rc" || die "Kate dropped the Language menu"
+pass "Language menu added after Kate's first start and kept by Kate"
+
 kpp uninstall --yes
 props() {  # "name=shortcut" for every entry in a file's <ActionProperties>
     python3 -c 'import sys, xml.dom.minidom as m

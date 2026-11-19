@@ -1,8 +1,8 @@
 [Unit]
-Description=kate-plusplus: snapshot Kate sessions and unsaved tabs
+Description=kate-plusplus: snapshot Kate sessions and keep the Language menu
 
 [Service]
 Type=oneshot
-ExecStart=@BIN@ backup --quiet
+ExecStart=@BIN@ maintain --quiet
 Nice=10
 IOSchedulingClass=idle

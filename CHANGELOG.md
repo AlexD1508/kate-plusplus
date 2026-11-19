@@ -4,6 +4,15 @@ All notable changes to Kate++ are listed here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **Language menu** on the menu bar, like Notepad++: pick a language for any tab, including
+  unsaved drafts. Kate++ re-adds it automatically if a Kate update rebuilds its menus.
+
+### Fixed
+- Uninstall keeps shortcut changes you made in Kate after installing Kate++.
+
 ## [1.0.1] — 2026-11-19
 
 ### Fixed

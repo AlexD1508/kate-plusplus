@@ -12,7 +12,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from . import core, shortcuts, theme
+from . import core, menus, shortcuts, theme
 from .core import (APP, BACKUP_DIR, BIN_LINK, CAELESTIA_SCHEME, DIM, BOLD, RESET, ACCENT,
                    GREEN, YELLOW, RED, KDEGLOBALS, REPO, STATE_DIR, USER_CONFIG, VERSION,
                    XDG_CONFIG, XDG_DATA, banner, info, section, step, warn, fail, ask, have, run)
@@ -127,6 +127,19 @@ def build_themes(cfg, kate, source) -> str | None:
 def install_files(kate, state):
     shortcuts.install(kate, REPO, state)
     step("Notepad++ keyboard shortcuts  (merged: every other key keeps Kate's default)")
+
+
+def language_menu(cfg, kate, quiet=False):
+    if not cfg.flag("features", "language-menu"):
+        menus.remove(kate)
+        return
+    st = menus.ensure(kate)
+    if quiet:
+        return
+    if st == "present":
+        step("Language menu on the menu bar  (pick Java, Python, … for any tab)")
+    else:
+        info("Language menu: appears after Kate's first start (added automatically)")
 
     dst = kate.data / "katepart5/script/commands/kate-plusplus.js"
     dst.parent.mkdir(parents=True, exist_ok=True)
@@ -323,7 +336,7 @@ def setup_systemd(cfg, source):
             warn("No systemd user session: automatic backups are off (run `kate-plusplus backup` yourself)")
         return
     wanted = []
-    if cfg.flag("features", "backups"):
+    if cfg.flag("features", "backups") or cfg.flag("features", "language-menu"):
         install_unit("kate-plusplus-backup.service", None)
         wanted.append(install_unit("kate-plusplus-backup.timer", "kate-plusplus-backup.timer"))
     watch = {"caelestia": CAELESTIA_SCHEME, "plasma": KDEGLOBALS}.get(source)
@@ -405,6 +418,7 @@ def do_apply(args, first_install=False):
 
     section("Kate")
     install_files(kate, state)
+    language_menu(cfg, kate)
     ensure_sessions(kate)
     source = resolve_theme_source(cfg, profile)
     theme_name = build_themes(cfg, kate, source)
@@ -515,6 +529,18 @@ def prune_backups(days):
             old.unlink()
 
 
+def do_maintain(args):
+    """Background job (every 10 min): snapshot if backups are on, and re-add the Language
+    menu if a Kate update rebuilt Kate's menu file."""
+    kate = core.detect_kate()
+    if not kate:
+        return
+    cfg = core.load_config()
+    if cfg.flag("features", "backups"):
+        do_backup(args)
+    language_menu(cfg, kate, quiet=True)
+
+
 def do_backup(args):
     kate = need_kate()
     cfg = core.load_config()
@@ -594,6 +620,12 @@ def do_doctor(args):
     if scheme and scheme != "Default":
         bad(f"Shortcut scheme '{scheme}' is active: it can disable normal keys. Run `kate-plusplus apply`")
     (ok if shortcuts.installed(kate, REPO) else bad)("Notepad++ shortcuts (merged into Kate's defaults)")
+    if cfg.flag("features", "language-menu"):
+        st = menus.status(kate)
+        {"present": ok, "missing": bad, "pending": meh}[st]({
+            "present": "Language menu on the menu bar",
+            "missing": "Language menu missing (Kate was updated?) → kate-plusplus apply",
+            "pending": "Language menu appears after Kate's first start"}[st])
     (ok if (kate.data / "katepart5/script/commands/kate-plusplus.js").exists() else bad)("Notepad++ tools script")
     stash = core.read_rc_value(kate.katerc, "[General]", "Stash unsaved file changes") == "true"
     (ok if stash else bad)("Stash (no save prompts, tabs survive restarts)")
@@ -670,6 +702,7 @@ def do_uninstall(args):
     remove_systemd()
     restore_default_editor(state)
     shortcuts.uninstall(kate, REPO, state)
+    menus.remove(kate)
     (kate.data / "katepart5/script/commands/kate-plusplus.js").unlink(missing_ok=True)
     for f in (kate.data / "org.kde.syntax-highlighting/themes").glob(f"{APP}-*.theme"):
         f.unlink()
@@ -761,6 +794,8 @@ def main(argv=None):
         s.add_argument("--no-backups", action="store_true")
     sub.add_parser("theme", help="regenerate the editor theme").add_argument("--quiet", action="store_true")
     sub.add_parser("backup", help="snapshot sessions & unsaved tabs").add_argument("--quiet", action="store_true")
+    sub.add_parser("maintain", help="background job: snapshots + keep the Language menu").add_argument(
+        "--quiet", action="store_true")
     sub.add_parser("restore", help="restore a snapshot").add_argument("snapshot", nargs="?")
     sub.add_parser("doctor", help="health check")
     sub.add_parser("update", help="update Kate++")
@@ -793,7 +828,7 @@ def main(argv=None):
         first = args.cmd == "install" and not core.load_state()
         return do_apply(args, first_install=first)
 
-    handlers = {"theme": do_theme, "backup": do_backup, "restore": do_restore, "doctor": do_doctor,
+    handlers = {"theme": do_theme, "backup": do_backup, "maintain": do_maintain, "restore": do_restore, "doctor": do_doctor,
                 "update": do_update, "uninstall": do_uninstall, "config": do_config}
     if args.cmd in handlers:
         return handlers[args.cmd](args)
