@@ -166,6 +166,14 @@ syntax-colors = balanced   # soft | balanced | vivid
 
 <p align="center"><img src="assets/intensity.png" width="900" alt="soft, balanced and vivid syntax colours"></p>
 
+#### 🔍 Try them all, live
+
+```bash
+kate-plusplus theme --pick
+```
+
+Browse every theme (Kate++'s own, the popular ones, and all of Kate's built-ins) with a real-colour code preview right in your terminal. Previews of Kate's built-in themes use `ksyntaxhighlighter6` (or `kate-syntax-highlighter`); without it you see an install hint instead, and applying them still works. Kate++'s own and the popular themes always preview. Arrow keys or <kbd>j</kbd>/<kbd>k</kbd> to browse, <kbd>Enter</kbd> to apply, <kbd>q</kbd> to cancel. It's also in the `kate-plusplus` menu.
+
 #### 🌈 Popular themes, ready to go
 
 Prefer a classic? Put its name in `source`. Kate++ adds ten favourites that Kate doesn't ship. They're built from each project's official palette and keep its designer's choices, only lifted where needed so every colour meets WCAG AA contrast.
@@ -216,6 +224,7 @@ Run `kate-plusplus` on its own for a small menu, or:
 |---|---|
 | `kate-plusplus config` | open your settings, then apply them |
 | `kate-plusplus apply` | re-apply `config.ini` |
+| `kate-plusplus theme --pick` | browse all themes with a live preview and apply one |
 | `kate-plusplus theme` | regenerate the editor theme |
 | `kate-plusplus backup` | snapshot sessions & unsaved tabs now |
 | `kate-plusplus restore` | pick a snapshot and bring it back |

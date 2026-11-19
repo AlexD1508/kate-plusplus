@@ -91,8 +91,9 @@ def kate_builtin_themes():
     for tool in ("ksyntaxhighlighter6", "kate-syntax-highlighter"):
         if have(tool):
             out = run(tool, "--list-themes").stdout or ""
+            ours = {name for name, *_rest in ports.PORTS.values()}   # installed by Kate++ itself
             names = [n.strip() for n in out.splitlines()
-                     if n.strip() and not n.strip().startswith("Kate++")]
+                     if n.strip() and not n.strip().startswith("Kate++") and n.strip() not in ours]
             if names:
                 return names
     return list(KATE_THEMES)
@@ -139,11 +140,12 @@ def theme_path(kate, slug):
     return kate.data / "org.kde.syntax-highlighting/themes" / f"{APP}-{slug}.theme"
 
 
-def build_themes(cfg, kate, source) -> str | None:
-    """Write the active theme (+ Kate++ Dark/Light so they're always selectable)."""
+def theme_options(cfg, quiet=False):
+    """Validated (accent, background, intensity) from config.ini."""
     intensity = cfg.get("theme", "syntax-colors").lower()
     if intensity not in theme.INTENSITY:
-        warn(f"syntax-colors '{intensity}' unknown; using balanced")
+        if not quiet:
+            warn(f"syntax-colors '{intensity}' unknown; using balanced")
         intensity = "balanced"
     accent, background = cfg.get("theme", "accent"), cfg.get("theme", "background")
     for name, val in (("accent", accent), ("background", background)):
@@ -151,29 +153,39 @@ def build_themes(cfg, kate, source) -> str | None:
             try:
                 theme.norm(val)
             except ValueError:
-                warn(f"{name} = {val} is not a hex colour like #7aa2f7; ignoring it")
+                if not quiet:
+                    warn(f"{name} = {val} is not a hex colour like #7aa2f7; ignoring it")
                 if name == "accent":
                     accent = ""
                 else:
                     background = ""
+    return accent, background, intensity
 
+
+def adaptive_theme(source, accent, background, intensity):
+    """Theme dict for a resolved Kate++ adaptive source (caelestia/plasma/dark/light)."""
+    if source in ("dark", "light"):
+        ui = theme.static_ui(source)
+    elif source == "caelestia":
+        ui = theme.caelestia_ui(json.loads(CAELESTIA_SCHEME.read_text(encoding="utf-8"))["colours"])
+    elif source == "plasma":
+        ui = theme.plasma_ui(KDEGLOBALS)
+    else:
+        return None
+    return theme.build_theme(THEME_NAMES[source], theme.apply_overrides(ui, accent, background), intensity)
+
+
+def build_themes(cfg, kate, source) -> str | None:
+    """Write the active theme (+ Kate++ Dark/Light so they're always selectable)."""
+    accent, background, intensity = theme_options(cfg)
     for slug in ports.PORTS:
         theme.write_theme(theme_path(kate, slug), ports.build(slug))
     for variant in ("dark", "light"):
-        ui = theme.static_ui(variant)
-        if source == variant:
-            ui = theme.apply_overrides(ui, accent, background)
+        own = source == variant
         theme.write_theme(theme_path(kate, variant),
-                          theme.build_theme(THEME_NAMES[variant], ui, intensity))
-    if source == "caelestia":
-        scheme = json.loads(CAELESTIA_SCHEME.read_text(encoding="utf-8"))
-        ui = theme.apply_overrides(theme.caelestia_ui(scheme["colours"]), accent, background)
-        theme.write_theme(theme_path(kate, "caelestia"),
-                          theme.build_theme(THEME_NAMES["caelestia"], ui, intensity))
-    elif source == "plasma":
-        ui = theme.apply_overrides(theme.plasma_ui(KDEGLOBALS), accent, background)
-        theme.write_theme(theme_path(kate, "plasma"),
-                          theme.build_theme(THEME_NAMES["plasma"], ui, intensity))
+                          adaptive_theme(variant, accent if own else "", background if own else "", intensity))
+    if source in ("caelestia", "plasma"):
+        theme.write_theme(theme_path(kate, source), adaptive_theme(source, accent, background, intensity))
     return theme_display_name(source)
 
 
@@ -654,25 +666,68 @@ def do_apply(args, first_install=False):
 
 # ======================================================================= theme
 
+def do_pick_theme(args):
+    from . import picker
+    core.QUIET = False   # picking is interactive: the choices must be visible even with --quiet
+    need_kate()
+    core.ensure_user_config()
+    current = core.load_config().get("theme", "source")
+    chosen = picker.pick(picker.entries(kate_builtin_themes()), current)
+    if chosen is None:
+        info("No change.")
+        return
+    core.set_user_config({("theme", "source"): chosen.source})
+    step(f"Theme set to {chosen.label}  {DIM}(source = {chosen.source}){RESET}")
+    args.pick = False
+    do_theme(args)
+    # keep the colour watcher in step with the new source (Caelestia/Plasma follow live changes)
+    cfg = core.load_config()
+    source = resolve_theme_source(cfg, resolve_profile(cfg))
+    quiet, core.QUIET = core.QUIET, True
+    try:
+        setup_systemd(cfg, source)
+    finally:
+        core.QUIET = quiet
+    state = core.load_state()
+    if state:
+        state["theme_source"] = source
+        core.save_state(state)
+
+
 def do_theme(args):
+    if getattr(args, "pick", False):
+        return do_pick_theme(args)
     kate = need_kate()
     cfg = core.load_config()
     profile = resolve_profile(cfg)
     source = resolve_theme_source(cfg, profile)
     name = build_themes(cfg, kate, source)
+    state = core.load_state()
+    installed = bool(state.get("version"))
+    changed = False
     if not name:
         core.info("Theme source is 'none'; Kate's own colours are left alone")
-        return
-    step(f"{name} regenerated")
-    current = core.read_rc_value(kate.katerc, "[KTextEditor Renderer]", "Color Theme")
-    if current != name:
-        if core.kate_running(kate):
-            info(f"Restart Kate (or pick {name} in Settings → Configure Kate → Color Themes)")
-        else:
-            state = core.load_state()
-            set_katerc(kate, state, [("[KTextEditor Renderer]", "Auto Color Theme Selection", "false"),
-                                     ("[KTextEditor Renderer]", "Color Theme", name)])
-            core.save_state(state)
+    else:
+        step(f"{name} regenerated")
+        r = "[KTextEditor Renderer]"
+        current = core.read_rc_value(kate.katerc, r, "Color Theme")
+        auto = core.read_rc_value(kate.katerc, r, "Auto Color Theme Selection")
+        if current != name or auto != "false":
+            # Safe while Kate runs: Kate only writes back settings it changed itself. Goes through
+            # set_katerc so uninstall can restore the previous values exactly.
+            set_katerc(kate, state, [(r, "Auto Color Theme Selection", "false"), (r, "Color Theme", name)])
+            changed = True
+    # Window colours follow the theme too (only once installed: a first install decides
+    # whether an existing scheme may be replaced, so it is left to apply).
+    if installed:
+        before = core.read_rc_value(kate.katerc, UI, "ColorScheme")
+        window_colors(cfg, kate, source, name, state)
+        changed = changed or core.read_rc_value(kate.katerc, UI, "ColorScheme") != before
+    if changed or installed:
+        core.save_state(state)
+    if changed and core.kate_running(kate):
+        info(f"Restart Kate to see {name or 'the new colours'}")
+    return None
 
 
 # ======================================================================= backups
@@ -978,6 +1033,7 @@ def do_menu(args):
           f"{DIM}overlay{RESET} {state.get('overlay_hotkey') or 'off'}\n")
     items = [("Apply settings", "re-apply config.ini", do_apply),
              ("Edit settings", "open config.ini", do_config),
+             ("Pick a theme", "browse themes with a live preview", do_pick_theme),
              ("Regenerate theme", "after changing colours", do_theme),
              ("Snapshot now", "back up sessions & unsaved tabs", do_backup),
              ("Restore a snapshot", "bring back older tabs", do_restore),
@@ -1009,7 +1065,9 @@ def main(argv=None):
         s.add_argument("--no-overlay", action="store_true")
         s.add_argument("--no-default-editor", action="store_true")
         s.add_argument("--no-backups", action="store_true")
-    sub.add_parser("theme", help="regenerate the editor theme").add_argument("--quiet", action="store_true")
+    t = sub.add_parser("theme", help="regenerate the editor theme, or --pick one with a live preview")
+    t.add_argument("--quiet", action="store_true")
+    t.add_argument("--pick", action="store_true", help="browse all themes with a live preview")
     sub.add_parser("backup", help="snapshot sessions & unsaved tabs").add_argument("--quiet", action="store_true")
     sub.add_parser("maintain", help="background job: snapshots + keep the Language menu").add_argument(
         "--quiet", action="store_true")
@@ -1022,7 +1080,7 @@ def main(argv=None):
 
     if getattr(args, "quiet", False):
         core.QUIET = True
-    for attr in ("yes", "quiet", "snapshot", "print"):
+    for attr in ("yes", "quiet", "snapshot", "print", "pick"):
         if not hasattr(args, attr):
             setattr(args, attr, False if attr != "snapshot" else None)
 
