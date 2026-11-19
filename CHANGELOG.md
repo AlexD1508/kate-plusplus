@@ -10,14 +10,28 @@ All notable changes to Kate++ are listed here. The format follows
 - **Language menu** on the menu bar, like Notepad++: pick a language for any tab, including
   unsaved drafts. If a Kate update rebuilds its menus, the background job re-adds it within
   10 minutes (systemd); otherwise run `kate-plusplus apply`.
+- **Matching window colours:** picking a theme now colours Kate's whole window (menus, tabs,
+  sidebars, status bar) to match. `window-colors = match | system`; a scheme you pick in
+  Kate after installing is never overwritten, and uninstall restores your previous one.
 - <kbd>Ctrl</kbd>+<kbd>T</kbd> opens a new tab (Ctrl+N still works). Transpose Characters
   moves off Ctrl+T and stays available in the command bar.
+- **Theme picker:** `kate-plusplus theme --pick` (also in the menu) browses every theme with
+  a live, real-colour code preview in the terminal; Enter applies it, window colours included.
 - **Ten popular themes** Kate doesn't ship, built from their official palettes and lifted to
   WCAG AA contrast: Rosé Pine (Main, Moon, Dawn), Kanagawa (Wave, Dragon, Lotus),
   Everforest (Dark, Light), Night Owl and Synthwave '84.
 - `source` in `config.ini` accepts **any theme by name**, including every theme that ships
   with Kate (`Catppuccin Mocha`, `Dracula`, `Nord`, …). Family names (`rose-pine`,
   `kanagawa`, `everforest`) follow your system's light/dark preference.
+- **Smarter highlighting:** with a language server installed, Kate++ enables semantic
+  highlighting, inlay hints, hover docs, signature help and diagnostics
+  (`[editor] smart-highlighting = true`). `doctor` lists installed language servers with
+  install hints for missing popular ones.
+- **Auto-save (opt-in):** `[editor] auto-save = off | focus | <seconds>` saves tabs that
+  have a local file path when the editor loses focus (also when moving to another part of
+  Kate) and, with a number, N seconds (5–3600) after your last edit. Untitled tabs stay
+  stashed; a path opened before it existed is created on the first auto-save. `off`
+  (default) leaves Kate's own setting alone.
 - **Prettify:** <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd> formats the whole file through Kate's Format
   plugin (prettier, ruff, jq, clang-format, shfmt, …). `doctor` lists installed formatters with
   install hints.
