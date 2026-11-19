@@ -255,6 +255,17 @@ Kate++ only ever changes the individual settings it manages. Everything else in 
 </details>
 
 <details>
+<summary>⏱️&nbsp; <b>Can it save files automatically, like VS Code?</b></summary>
+<br>
+
+> **Yes, opt-in:** set `auto-save = focus` or `auto-save = 30` in the `[editor]` section of `config.ini`, then `kate-plusplus apply`.
+> - `focus` saves a modified tab whenever its editor loses keyboard focus: when you switch to another app, but also when you move into another part of Kate, such as the find bar or the file tree.
+> - `30` also saves 30 seconds after your last edit.
+> - Auto-save applies to every tab that has a file path on your local disk, including a path you opened that doesn't exist yet: Kate creates that file on the first auto-save. Untitled tabs are never auto-saved; they keep living in the stash.
+
+</details>
+
+<details>
 <summary>🧷&nbsp; <b>Will it mess up my existing Kate setup?</b></summary>
 <br>
 

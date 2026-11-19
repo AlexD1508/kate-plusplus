@@ -21,6 +21,11 @@ All notable changes to Kate++ are listed here. The format follows
 - `source` in `config.ini` accepts **any theme by name**, including every theme that ships
   with Kate (`Catppuccin Mocha`, `Dracula`, `Nord`, …). Family names (`rose-pine`,
   `kanagawa`, `everforest`) follow your system's light/dark preference.
+- **Auto-save (opt-in):** `[editor] auto-save = off | focus | <seconds>` saves tabs that
+  have a local file path when the editor loses focus (also when moving to another part of
+  Kate) and, with a number, N seconds (5–3600) after your last edit. Untitled tabs stay
+  stashed; a path opened before it existed is created on the first auto-save. `off`
+  (default) leaves Kate's own setting alone.
 
 ### Fixed
 - The opt-in pop-up notepad no longer overwrites a `org.kde.kate.desktop` launcher override

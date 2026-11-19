@@ -246,6 +246,23 @@ def managed_keys():
                    (r, "Auto Color Theme Selection"), ("[KTextEditor View]", "Scroll Bar MiniMap")]
 
 
+def _init_records(state):
+    """Create the record set (or the missing completeness flag) on first use (see set_katerc)."""
+    if "katerc_complete" in state and "katerc_before" in state:
+        return
+    records = state.setdefault("katerc_before", {})
+    legacy = bool(state.get("version"))          # installed by a version without (full) records
+    if legacy and PRE_INSTALL.exists():
+        # ColorScheme too (window colours write it), but it stays out of managed_keys() so
+        # the record-less fallback never deletes a scheme the user picked
+        for group, key in managed_keys() + [(UI, "ColorScheme")]:
+            k = f"{group}\t{key}"
+            if k not in records:
+                records[k] = core.read_rc_value(PRE_INSTALL, group, key)
+    state["katerc_complete"] = not legacy or PRE_INSTALL.exists()
+    core.save_state(state)
+
+
 def set_katerc(kate, state, settings):
     """Write Kate settings, remembering each key's value from before Kate++ first touched it,
     so uninstall can put back exactly that (or remove the key if there was none).
@@ -255,18 +272,14 @@ def set_katerc(kate, state, settings):
     whether the records describe the true originals: always for new installs; for upgrades
     from versions without records only when the pre-install backup exists (then every
     managed key is seeded from it at once)."""
-    if "katerc_complete" not in state or "katerc_before" not in state:   # missing records or flag
-        records = state.setdefault("katerc_before", {})
-        legacy = bool(state.get("version"))          # installed by a version without (full) records
-        if legacy and PRE_INSTALL.exists():
-            # ColorScheme too (window colours write it), but it stays out of managed_keys() so
-            # the record-less fallback never deletes a scheme the user picked
-            for group, key in managed_keys() + [(UI, "ColorScheme")]:
-                k = f"{group}\t{key}"
-                if k not in records:
-                    records[k] = core.read_rc_value(PRE_INSTALL, group, key)
-        state["katerc_complete"] = not legacy or PRE_INSTALL.exists()
-        core.save_state(state)
+    record_katerc(kate, state, settings)
+    core.merge_rc(kate.katerc, settings)
+
+
+def record_katerc(kate, state, settings):
+    """The recording half of set_katerc: store each key's original value (once) and save the
+    state, without changing katerc yet."""
+    _init_records(state)
     before = state["katerc_before"]
     new = False
     for group, key, _ in settings:
@@ -277,7 +290,6 @@ def set_katerc(kate, state, settings):
             new = True
     if new:
         core.save_state(state)
-    core.merge_rc(kate.katerc, settings)
 
 
 def restore_katerc(kate, state) -> bool:
@@ -293,9 +305,16 @@ def restore_katerc(kate, state) -> bool:
     return True
 
 
-def remove_managed_katerc(kate):
-    """Fallback without complete records or a backup: remove the settings Kate++ manages."""
-    core.merge_rc(kate.katerc, [(g, k, "@delete") for g, k in managed_keys()])
+def remove_managed_katerc(kate, state=None):
+    """Fallback without complete records or a backup: remove the settings Kate++ manages.
+    Auto-save keys only when Kate++ set them; values recorded for them are put back."""
+    changes = [(g, k, "@delete") for g, k in managed_keys()]
+    if state and state.get("auto_save_managed"):
+        before = state.get("katerc_before", {})
+        for k in AUTO_SAVE_KEYS:      # put back what was recorded; delete only the unknown
+            old = before.get(f"{DOC}\t{k}")
+            changes.append((DOC, k, "@delete" if old is None else old))
+    core.merge_rc(kate.katerc, changes)
 
 
 UI = "[UiSettings]"
@@ -366,6 +385,69 @@ def kate_settings(cfg, kate, theme_name, state):
         settings += [(r, "Auto Color Theme Selection", "false"), (r, "Color Theme", theme_name)]
     set_katerc(kate, state, settings)
     step(f"Editor: {font} {size}pt · tabs, minimap, function list, macros, stash")
+
+
+AUTO_SAVE_KEYS = ("Auto Save", "Auto Save Interval", "Auto Save On Focus Out")
+DOC = "[KTextEditor Document]"
+
+
+def _auto_save_off(kate, state, message="Auto-save turned off"):
+    """Undo only what Kate++ set: each auto-save key goes back to the value recorded by
+    set_katerc before Kate++ first changed it (or is removed if there was none). Kate's own
+    auto-save setting is never touched when Kate++ didn't manage it."""
+    if state.pop("auto_save_managed", False):
+        before = state.get("katerc_before", {})
+        core.merge_rc(kate.katerc, [
+            (DOC, k, "@delete" if before.get(f"{DOC}\t{k}") is None else before[f"{DOC}\t{k}"])
+            for k in AUTO_SAVE_KEYS])
+        for k in AUTO_SAVE_KEYS:   # these keys are the user's again: forget the old originals,
+            before.pop(f"{DOC}\t{k}", None)  # so uninstall never overwrites a later choice
+        core.save_state(state)
+        info(message)
+
+
+def auto_save(cfg, kate, state):
+    """Opt-in auto-save for tabs with a local file path (untitled tabs stay stashed).
+
+    Kate saves any modified document with a local path, including one opened before the
+    file existed, and focus-out also fires when focus moves inside Kate (e.g. find bar).
+
+    off   – Kate++ leaves Kate's own auto-save setting alone (and undoes its own, if any)
+    focus – save when Kate loses focus
+    N     – also save N seconds after the last edit (5–3600)
+
+    KTextEditor only saves on focus-out when both "Auto Save" and "Auto Save On Focus Out"
+    are true; "Auto Save Interval" restarts after every edit, so it's an idle delay."""
+    value = cfg.get("editor", "auto-save").lower()
+    if value in ("", "off", "false", "no"):
+        _auto_save_off(kate, state)
+        return
+    if value in ("focus", "on", "true", "yes"):
+        interval = None
+    else:
+        try:
+            interval = int(value)
+        except ValueError:
+            interval = -1
+        if not 5 <= interval <= 3600:
+            warn(f"auto-save = {value} isn't off, focus or a number of seconds from 5 to 3600; "
+                 "auto-save stays off")
+            _auto_save_off(kate, state, "Auto-save turned off (invalid value)")
+            return
+    settings = [
+        (DOC, "Auto Save", "true"),
+        (DOC, "Auto Save On Focus Out", "true"),
+        (DOC, "Auto Save Interval", str(interval) if interval else "@delete"),
+    ]
+    # record originals and persist ownership *before* katerc changes, so a failure later in
+    # apply can't leave auto-save on without Kate++ knowing it has to undo it
+    record_katerc(kate, state, settings)
+    state["auto_save_managed"] = True
+    core.save_state(state)
+    core.merge_rc(kate.katerc, settings)
+    step("Auto-save: when Kate loses focus"
+         + (f" and {interval} s after your last edit" if interval else "")
+         + f"  {DIM}(tabs with a file path; untitled tabs stay stashed){RESET}")
 
 
 def hotkey_modmask(hotkey):
@@ -612,6 +694,7 @@ def do_apply(args, first_install=False):
     theme_name = build_themes(cfg, kate, source)
     kate_settings(cfg, kate, theme_name, state)
     window_colors(cfg, kate, source, theme_name, state)
+    auto_save(cfg, kate, state)
     if theme_name:
         detail = (f"{cfg.get('theme', 'syntax-colors')} syntax colours" if source in THEME_NAMES
                   else "ships with Kate" if source.startswith("kate:")
@@ -929,7 +1012,7 @@ def do_uninstall(args):
     elif restore_katerc(kate, state):  # exactly what each key was before Kate++
         step("Your previous Kate settings restored")
     else:                               # older install without records and without a backup
-        remove_managed_katerc(kate)
+        remove_managed_katerc(kate, state)
         scheme = core.read_rc_value(kate.katerc, "[UiSettings]", "ColorScheme")
         if scheme and scheme.startswith(window.PREFIX):   # its file is gone; a manual pick stays
             core.merge_rc(kate.katerc, [("[UiSettings]", "ColorScheme", "@delete")])
