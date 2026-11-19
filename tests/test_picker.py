@@ -60,6 +60,9 @@ class PickerTest(unittest.TestCase):
             cfg.parser.read_dict({"theme": {"source": "Dracula"}})
             args = mock.Mock(pick=False)
             with mock.patch.object(cli, "need_kate", return_value=kate), \
+                    mock.patch.object(core, "load_state", return_value={}), \
+                    mock.patch.object(core, "save_state"), \
+                    mock.patch.object(cli, "PRE_INSTALL", Path(tmp) / "no-backup"), \
                     mock.patch.object(core, "load_config", return_value=cfg), \
                     mock.patch.object(core, "kate_running", return_value=True), \
                     mock.patch.object(cli, "build_themes", return_value="Dracula"), \
