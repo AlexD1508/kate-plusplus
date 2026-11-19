@@ -18,6 +18,13 @@ All notable changes to Kate++ are listed here. The format follows
 - `source` in `config.ini` accepts **any theme by name**, including every theme that ships
   with Kate (`Catppuccin Mocha`, `Dracula`, `Nord`, …). Family names (`rose-pine`,
   `kanagawa`, `everforest`) follow your system's light/dark preference.
+- **Prettify:** <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd> formats the whole file through Kate's Format
+  plugin (prettier, ruff, jq, clang-format, shfmt, …). `doctor` lists installed formatters with
+  install hints.
+
+### Changed
+- Kate's format-on-save (on by default in Kate) is turned off unless you set
+  `[editor] format-on-save = true`; uninstall restores your previous setting exactly.
 
 ### Fixed
 - The opt-in pop-up notepad no longer overwrites a `org.kde.kate.desktop` launcher override

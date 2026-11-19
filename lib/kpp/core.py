@@ -252,7 +252,8 @@ DEFAULTS = {
     "features": {"notepad-overlay": "false", "notepad-hotkey": "SUPER + J",
                  "default-editor": "true", "backups": "true", "language-menu": "true", "backup-keep-days": "2"},
     "theme": {"source": "auto", "accent": "", "background": "", "syntax-colors": "balanced"},
-    "editor": {"font": "auto", "font-size": "11", "line-spacing": "1.15", "minimap": "true"},
+    "editor": {"font": "auto", "font-size": "11", "line-spacing": "1.15", "minimap": "true",
+               "format-on-save": "false"},
 }
 
 
@@ -273,6 +274,18 @@ class Config:
 
     def flag(self, section, key):
         return self.get(section, key).lower() in ("1", "true", "yes", "on")
+
+    def strict_flag(self, section, key):
+        """Like flag(), but a value that is neither true nor false (e.g. a typo such as
+        'tru') warns and falls back to the default instead of silently meaning false."""
+        value = self.get(section, key).lower()
+        if value in ("1", "true", "yes", "on"):
+            return True
+        if value in ("0", "false", "no", "off"):
+            return False
+        default = DEFAULTS[section][key]
+        warn(f"[{section}] {key} = {value!r} isn't true or false; using {default}")
+        return default.lower() in ("1", "true", "yes", "on")
 
 
 def load_config() -> Config:

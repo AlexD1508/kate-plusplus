@@ -1,0 +1,4 @@
+<!-- Kate++ shortcut overrides for Kate's Format plugin: format the whole file, Notepad++ JSTool-style. -->
+<overrides component="formatplugin" file="ui.rc">
+  <Action name="format_document" shortcut="Ctrl+Alt+Shift+B"/>
+</overrides>

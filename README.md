@@ -184,6 +184,14 @@ Then `kate-plusplus apply`. With Caelestia or Plasma as the source, the theme re
 
 <br>
 
+#### ✨ Prettify
+
+<kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd> (Kate 24.08+; on older Kate open the command bar with <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>I</kbd> and run *Format Document*) tidies the whole file with the right tool for the language, through Kate's built-in Format plugin: **prettier** (JS, TS, CSS, HTML), **ruff** (Python), **jq** (JSON), **clang-format** (C/C++), **shfmt** (shell), **yamlfmt**, **rustfmt**, **gofmt**, **xmllint**. `kate-plusplus doctor` shows which you have and how to get the popular ones. Kate itself reformats on every save by default; Kate++ turns that off (`format-on-save = false` under `[editor]`) so files only change when you ask.
+
+<sub>For a file that's already saved on disk, Prettify **saves your changes first** (Kate formats the file on disk and applies the result), even if no formatter is installed for that language. JSON works everywhere without extra tools via Notepad++ Tools → Format JSON (<kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>M</kbd>). Some formatters (prettier, clang-format) pick their rules from the file name, so they work best on saved files. The formatter list above is for Kate 24.08 and newer. Older Kate differs: Python uses autopep8 until 24.02 (ruff from 24.05), shell formatting (shfmt) arrives in 24.08, and up to 24.08 clang-format reformats only the lines changed since the last Git commit; Kate 24.12 and newer format the whole C/C++ file.</sub>
+
+<br>
+
 ## ⌨️ Shortcuts
 
 | Action | Kate++ | Kate default |
@@ -196,6 +204,7 @@ Then `kate-plusplus apply`. With Caelestia or Plasma as the source, the theme re
 | lowercase / UPPERCASE | <kbd>Ctrl</kbd>+<kbd>U</kbd> / <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>U</kbd> | swapped |
 | Record / play macro | <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd> / <kbd>P</kbd> | <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>K</kbd> / <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>K</kbd> |
 | New tab | <kbd>Ctrl</kbd>+<kbd>T</kbd> or <kbd>Ctrl</kbd>+<kbd>N</kbd> | <kbd>Ctrl</kbd>+<kbd>N</kbd> |
+| Prettify the whole file | <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd> | — |
 | Format JSON | <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>M</kbd> | — |
 | Insert date & time | <kbd>Ctrl</kbd>+<kbd>F5</kbd> | — |
 | Move line up / down | <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>↑</kbd> / <kbd>↓</kbd> | same |

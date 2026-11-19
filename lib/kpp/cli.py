@@ -13,7 +13,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from . import core, menus, ports, shortcuts, theme
+from . import core, formatting, menus, ports, shortcuts, theme
 from .core import (APP, BACKUP_DIR, BIN_LINK, CAELESTIA_SCHEME, DIM, BOLD, RESET, ACCENT,
                    GREEN, YELLOW, RED, KDEGLOBALS, REPO, STATE_DIR, USER_CONFIG, VERSION,
                    XDG_CONFIG, XDG_DATA, banner, info, section, step, warn, fail, ask, have, run)
@@ -192,6 +192,17 @@ def theme_display_name(source):
 def install_files(kate, state):
     shortcuts.install(kate, REPO, state)
     step("Notepad++ keyboard shortcuts  (merged: every other key keeps Kate's default)")
+
+
+def setup_formatting(cfg, kate, state):
+    on_save = cfg.strict_flag("editor", "format-on-save")
+    formatting.set_format_on_save(kate, state, on_save)
+    found = [cmd for cmd, _ in formatting.installed()]
+    tools = ", ".join(found) if found else "no formatters installed yet (see `kate-plusplus doctor`)"
+    if formatting.shortcut_supported(kate):
+        step(f"Prettify with Ctrl+Alt+Shift+B{' · on save' if on_save else ''}  {DIM}({tools}){RESET}")
+    else:
+        info(f"Prettify: command bar (Ctrl+Alt+I) → Format Document {DIM}(the shortcut needs Kate 24.08+){RESET}")
 
     dst = kate.data / "katepart5/script/commands/kate-plusplus.js"
     dst.parent.mkdir(parents=True, exist_ok=True)
@@ -557,6 +568,7 @@ def do_apply(args, first_install=False):
     section("Kate")
     install_files(kate, state)
     language_menu(cfg, kate)
+    setup_formatting(cfg, kate, state)
     ensure_sessions(kate)
     source = resolve_theme_source(cfg, profile)
     theme_name = build_themes(cfg, kate, source)
@@ -813,6 +825,15 @@ def do_doctor(args):
         ok(f"{len(snaps)} snapshots, newest {_human(snaps[0].stat().st_mtime)}")
     elif cfg.flag("features", "backups"):
         meh("No snapshots yet")
+    found = formatting.installed()
+    if not formatting.shortcut_supported(kate):
+        meh(f"Prettify shortcut needs Kate 24.08+ (you have {kate.version}); "
+            "use the command bar: Ctrl+Alt+I → Format Document")
+    (ok if found else meh)("Prettify (Ctrl+Alt+Shift+B) · formatters: "
+                           + (", ".join(f"{c} ({w})" for c, w in found) if found else "none installed yet"))
+    for cmd, what, hint in formatting.FORMATTERS:
+        if cmd in formatting.POPULAR and not have(cmd):
+            info(f"{what}: {DIM}{hint}{RESET}")
     if have("xdg-mime"):
         d = (run("xdg-mime", "query", "default", "text/plain").stdout or "").strip()
         (ok if d == "org.kde.kate.desktop" or not cfg.flag("features", "default-editor") else meh)(
@@ -856,6 +877,7 @@ def do_uninstall(args):
     restore_default_editor(state)
     shortcuts.uninstall(kate, REPO, state)
     menus.remove(kate)
+    formatting.restore(kate, state)
     (kate.data / "katepart5/script/commands/kate-plusplus.js").unlink(missing_ok=True)
     for f in (kate.data / "org.kde.syntax-highlighting/themes").glob(f"{APP}-*.theme"):
         f.unlink()

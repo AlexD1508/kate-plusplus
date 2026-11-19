@@ -169,5 +169,70 @@ out=$(env -i HOME="$H" PATH=/usr/bin:/bin KPP_TEST=1 ./bin/kate-plusplus uninsta
 grep -q 'Kate++ settings removed' <<<"$out" || die "partial legacy records were treated as a full restore"
 grep -q '^Tabbar Tab Limit=' "$H/.config/katerc" && die "partial legacy uninstall left Kate++ settings behind"
 pass "partial legacy records fall back to removing Kate++ settings"
+# --- prettify: format-on-save off by default, your own settings.json restored on uninstall ---
+H=$root/format; mkdir -p "$H/.config/kate/formatting"
+printf '{\n    "formatterForPython": "black",\n    "formatOnSave": true\n}\n' > "$H/.config/kate/formatting/settings.json"
+cp "$H/.config/kate/formatting/settings.json" "$root/format.orig"
+run install --yes
+python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d["formatOnSave"] is False and d["formatterForPython"] == "black", d' \
+    "$H/.config/kate/formatting/settings.json" || die "format-on-save not turned off (or user keys lost)"
+grep -q 'name="format_document" shortcut="Ctrl+Alt+Shift+B"' "$H/.local/share/kxmlgui5/formatplugin/ui.rc" || die "format shortcut missing"
+run uninstall --yes
+python3 -c 'import json,sys; a,b=(json.load(open(f)) for f in sys.argv[1:]); assert a == b, (a, b)' \
+    "$root/format.orig" "$H/.config/kate/formatting/settings.json" || die "formatting settings not restored"
+H=$root/format2; mkdir -p "$H/.config"
+run install --yes; run uninstall --yes
+[[ -e $H/.config/kate/formatting/settings.json ]] && die "uninstall left a formatting settings file Kate++ created"
+# custom [kateformatplugin] configPath (Kate 26.08+ reads it): that file is changed and restored
+if PYTHONPATH=lib python3 -c 'import sys; from kpp import core, formatting
+k = core.detect_kate(); sys.exit(0 if formatting._kate_at_least(k, formatting.CONFIG_PATH_MIN_KATE) else 1)'; then
+    H=$root/format3; mkdir -p "$H/.config" "$H/fmt"
+    printf '[kateformatplugin]\nconfigPath=%s\n' "$H/fmt/my.json" > "$H/.config/katerc"
+    printf '{\n    "formatOnSave": true\n}\n' > "$H/fmt/my.json"; chmod 600 "$H/fmt/my.json"
+    run install --yes
+    python3 -c 'import json,sys; assert json.load(open(sys.argv[1]))["formatOnSave"] is False' "$H/fmt/my.json" \
+        || die "custom configPath not honoured"
+    [[ $(stat -c %a "$H/fmt/my.json") == 600 ]] || die "settings file permissions changed"
+    [[ -e $H/.config/kate/formatting/settings.json ]] && die "wrote the default file although configPath is set"
+    # the same file through a '..' alias must reuse its baseline, not record Kate++'s value
+    sed -i "s|^configPath=.*|configPath=$H/fmt/../fmt/my.json|" "$H/.config/katerc"
+    run apply --yes
+    sed -i "s|^configPath=.*|configPath=$H/fmt/my.json|" "$H/.config/katerc"
+    # switch configPath to a second file and apply again: both files must be restored
+    printf '{\n    "formatOnSave": true\n}\n' > "$H/fmt/other.json"
+    sed -i "s|^configPath=.*|configPath=$H/fmt/other.json|" "$H/.config/katerc"
+    run apply --yes
+    python3 -c 'import json,sys; assert json.load(open(sys.argv[1]))["formatOnSave"] is False' "$H/fmt/other.json" \
+        || die "new configPath not honoured"
+    run uninstall --yes
+    for f in my other; do
+        python3 -c 'import json,sys; assert json.load(open(sys.argv[1]))["formatOnSave"] is True' "$H/fmt/$f.json" \
+            || die "settings file $f.json not restored"
+    done
+else   # older Kate ignores configPath, so the default file is the one Kate++ must change
+    H=$root/format3; mkdir -p "$H/.config"
+    printf '[kateformatplugin]\nconfigPath=%s\n' "$H/ignored.json" > "$H/.config/katerc"
+    run install --yes
+    python3 -c 'import json,sys; assert json.load(open(sys.argv[1]))["formatOnSave"] is False' \
+        "$H/.config/kate/formatting/settings.json" || die "default settings file not used on older Kate"
+    [[ -e $H/ignored.json ]] && die "wrote configPath although this Kate ignores it"
+    run uninstall --yes
+fi
+# Kate before 26.08 ignores configPath: Kate++ must then change the default file
+env -i HOME="$H" PATH=/usr/bin:/bin PYTHONPATH=lib python3 - <<'PY' || die "configPath used on a Kate that ignores it"
+import pathlib
+from kpp import core, formatting
+k = core.Kate("native", ["kate"], core.XDG_CONFIG, core.XDG_DATA, "25.08.0")
+assert formatting.settings_path(k) == (core.XDG_CONFIG / "kate/formatting/settings.json").resolve()
+k.version = "26.08.0"
+assert formatting.settings_path(k) != (core.XDG_CONFIG / "kate/formatting/settings.json").resolve()
+PY
+# a typo in format-on-save warns and keeps the default (off) instead of silently meaning false
+H=$root/format4; mkdir -p "$H/.config"
+run install --yes
+sed -i 's/^format-on-save = .*/format-on-save = tru/' "$H/.config/kate-plusplus/config.ini"
+out=$(env -i HOME="$H" PATH=/usr/bin:/bin KPP_TEST=1 ./bin/kate-plusplus apply --yes 2>&1)
+grep -q "isn't true or false" <<<"$out" || die "invalid format-on-save value did not warn"
+pass "prettify: format-on-save off, shortcut merged, settings restored exactly (incl. configPath, 0600)"
 
 echo "All sandbox tests passed."
