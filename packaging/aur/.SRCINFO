@@ -1,0 +1,17 @@
+pkgbase = kate-plusplus
+	pkgdesc = Notepad++ comfort for Kate: session memory, Notepad++ shortcuts and tools, harmonised themes
+	pkgver = 1.0.0
+	pkgrel = 1
+	url = https://github.com/AlexD1508/kate-plusplus
+	install = kate-plusplus.install
+	arch = any
+	license = MIT
+	depends = kate
+	depends = python
+	optdepends = caelestia-cli: wallpaper-driven theme and Super+J pop-up notepad
+	optdepends = ttf-jetbrains-mono-nerd: recommended editor font
+	optdepends = xdg-utils: make Kate the default text editor
+	source = kate-plusplus-1.0.0.tar.gz::https://github.com/AlexD1508/kate-plusplus/archive/refs/tags/v1.0.0.tar.gz
+	sha256sums = 4ada757193606d997cd9c6d526a3e650776d2bf12b7d88115b32b81c6a0597d1
+
+pkgname = kate-plusplus

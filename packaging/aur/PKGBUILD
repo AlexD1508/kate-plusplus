@@ -14,13 +14,13 @@ optdepends=(
 )
 install=kate-plusplus.install
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('SKIP')
+sha256sums=('4ada757193606d997cd9c6d526a3e650776d2bf12b7d88115b32b81c6a0597d1')
 
 package() {
   cd "$pkgname-$pkgver"
   install -d "$pkgdir/usr/share/$pkgname"
   cp -r bin lib config shortcuts kate-scripts hyprland desktop systemd assets "$pkgdir/usr/share/$pkgname/"
-  find "$pkgdir/usr/share/$pkgname" -name '*.png' -delete   # README images aren't needed at runtime
+  find "$pkgdir/usr/share/$pkgname/assets" -type f ! -name icon.svg -delete   # README images aren't needed at runtime
   install -Dm755 /dev/stdin "$pkgdir/usr/bin/$pkgname" <<'SH'
 #!/bin/sh
 exec /usr/share/kate-plusplus/bin/kate-plusplus "$@"
