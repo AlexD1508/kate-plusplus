@@ -9,9 +9,6 @@ All notable changes to Kate++ are listed here. The format follows
 ### Added
 - **Language menu** on the menu bar, like Notepad++: pick a language for any tab, including
   unsaved drafts. Kate++ re-adds it automatically if a Kate update rebuilds its menus.
-
-### Fixed
-- Uninstall keeps shortcut changes you made in Kate after installing Kate++.
 - <kbd>Ctrl</kbd>+<kbd>T</kbd> opens a new tab (Ctrl+N still works). Transpose Characters
   moves off Ctrl+T and stays available in the command bar.
 - **Ten popular themes** Kate doesn't ship, built from their official palettes and lifted to
@@ -20,8 +17,11 @@ All notable changes to Kate++ are listed here. The format follows
 - `source` in `config.ini` accepts **any theme by name**, including every theme that ships
   with Kate (`Catppuccin Mocha`, `Dracula`, `Nord`, …). Family names (`rose-pine`,
   `kanagawa`, `everforest`) follow your system's light/dark preference.
+
+### Fixed
 - Uninstall now restores **exactly** the value each Kate setting had before Kate++, even
   when you skip restoring the full settings backup (previously those keys were deleted).
+- Uninstall keeps shortcut changes you made in Kate after installing Kate++.
 
 ## [1.0.1] — 2026-11-19
 
