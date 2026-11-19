@@ -160,6 +160,8 @@ background =               # e.g. #1a1b26
 syntax-colors = balanced   # soft | balanced | vivid
 ```
 
+**The whole window matches too.** Pick Rosé Pine or Dracula and Kate's menus, tabs, sidebars and status bar take on that theme's colours, not just the code. (For themes bundled with Kate, like Dracula, Kate++ reads their colours with `ksyntaxhighlighter6`; without it those keep your desktop's window colours.) With Caelestia or Plasma the window already follows your desktop. Set `window-colors = system` to opt out; a scheme you pick yourself in Kate (*Settings → Window Color Scheme*) after installing is never overwritten. (On first install Kate++ replaces Kate's previous window scheme so everything matches; uninstall puts it back.)
+
 <sub>`accent`, `background` and `syntax-colors` tune the adaptive Kate++ themes (`auto`, `caelestia`, `plasma`, `dark`, `light`). Named themes such as Rosé Pine or Dracula keep their designers' colours.</sub>
 
 <p align="center"><img src="assets/intensity.png" width="900" alt="soft, balanced and vivid syntax colours"></p>

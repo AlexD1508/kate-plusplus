@@ -13,7 +13,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from . import core, menus, ports, shortcuts, theme
+from . import core, menus, ports, shortcuts, theme, window
 from .core import (APP, BACKUP_DIR, BIN_LINK, CAELESTIA_SCHEME, DIM, BOLD, RESET, ACCENT,
                    GREEN, YELLOW, RED, KDEGLOBALS, REPO, STATE_DIR, USER_CONFIG, VERSION,
                    XDG_CONFIG, XDG_DATA, banner, info, section, step, warn, fail, ask, have, run)
@@ -267,12 +267,16 @@ def set_katerc(kate, state, settings):
     whether the records describe the true originals: always for new installs; for upgrades
     from versions without records only when the pre-install backup exists (then every
     managed key is seeded from it at once)."""
-    if "katerc_before" not in state:
-        state["katerc_before"] = {}
-        legacy = bool(state.get("version"))          # installed by a version without records
+    if "katerc_complete" not in state or "katerc_before" not in state:   # missing records or flag
+        records = state.setdefault("katerc_before", {})
+        legacy = bool(state.get("version"))          # installed by a version without (full) records
         if legacy and PRE_INSTALL.exists():
-            for group, key in managed_keys():
-                state["katerc_before"][f"{group}\t{key}"] = core.read_rc_value(PRE_INSTALL, group, key)
+            # ColorScheme too (window colours write it), but it stays out of managed_keys() so
+            # the record-less fallback never deletes a scheme the user picked
+            for group, key in managed_keys() + [(UI, "ColorScheme")]:
+                k = f"{group}\t{key}"
+                if k not in records:
+                    records[k] = core.read_rc_value(PRE_INSTALL, group, key)
         state["katerc_complete"] = not legacy or PRE_INSTALL.exists()
         core.save_state(state)
     before = state["katerc_before"]
@@ -304,6 +308,52 @@ def restore_katerc(kate, state) -> bool:
 def remove_managed_katerc(kate):
     """Fallback without complete records or a backup: remove the settings Kate++ manages."""
     core.merge_rc(kate.katerc, [(g, k, "@delete") for g, k in managed_keys()])
+
+
+UI = "[UiSettings]"
+
+
+def window_colors(cfg, kate, source, theme_name, state):
+    """Match Kate's window colours to the editor theme, or leave them to the desktop.
+
+    - Caelestia / Plasma sources, or window-colors = system: the window follows the desktop.
+    - Otherwise Kate++ writes a matching colour scheme and selects it.
+    - A scheme the user picked in Kate by hand is never overwritten."""
+    mode = cfg.get("theme", "window-colors").lower()
+    if mode not in ("match", "system"):
+        warn(f"window-colors = {mode} isn't a choice; use match or system. Using match for now")
+        mode = "match"
+    current = core.read_rc_value(kate.katerc, UI, "ColorScheme")
+    ours = current is not None and current.startswith(window.PREFIX)
+    # Only a brand-new install may replace a scheme that's already set (once; uninstall restores
+    # it). An existing install (state has a version) treats any non-Kate++ scheme as the user's.
+    first_run = "window_scheme" not in state and not state.get("version")
+    manual = bool(current) and not ours and not first_run and current != state.get("window_scheme")
+
+    if manual:   # state["window_scheme"] keeps naming only what Kate++ wrote
+        info(f"Window colours: keeping '{current}' you picked in Kate "
+             f"{DIM}(choose Default there to let Kate++ match again){RESET}")
+        return
+    follow_desktop = mode == "system" or source in (None, "caelestia", "plasma")
+    roles = None
+    if not follow_desktop:
+        if source.startswith("kate:"):
+            roles = window.roles_from_kate_theme(source[5:])
+        else:
+            slug = source.split(":", 1)[-1]
+            roles = window.roles_from_theme(json.loads(theme_path(kate, slug).read_text(encoding="utf-8")))
+    if roles is None:
+        window.remove_schemes(kate)
+        if current and (ours or first_run):
+            set_katerc(kate, state, [(UI, "ColorScheme", "@delete")])
+        state["window_scheme"] = ""
+        if not follow_desktop:
+            info("Window colours follow your desktop (couldn't read this theme's colours)")
+        return
+    sid = window.write_scheme(kate, theme_name, roles)
+    set_katerc(kate, state, [(UI, "ColorScheme", sid)])
+    state["window_scheme"] = sid
+    step(f"Window colours match {theme_name}")
 
 
 def kate_settings(cfg, kate, theme_name, state):
@@ -573,6 +623,7 @@ def do_apply(args, first_install=False):
     source = resolve_theme_source(cfg, profile)
     theme_name = build_themes(cfg, kate, source)
     kate_settings(cfg, kate, theme_name, state)
+    window_colors(cfg, kate, source, theme_name, state)
     if theme_name:
         detail = (f"{cfg.get('theme', 'syntax-colors')} syntax colours" if source in THEME_NAMES
                   else "ships with Kate" if source.startswith("kate:")
@@ -833,6 +884,17 @@ def do_doctor(args):
         (ok if f.exists() else bad)(f"Theme {t}  {DIM}({f.name}){RESET}")
     else:
         meh("Theme: Kate's own (source = none)")
+    ws = state.get("window_scheme")
+    cur = core.read_rc_value(kate.katerc, "[UiSettings]", "ColorScheme")
+    if cur and cur == ws:
+        ok(f"Window colours match the theme {DIM}({ws}){RESET}")
+    elif cur and not cur.startswith(window.PREFIX):
+        ok(f"Window colours: '{cur}', your own choice in Kate "
+           f"{DIM}(choose Default there to let Kate++ match the theme){RESET}")
+    elif cur:
+        meh(f"Window colours: '{cur}' is an old Kate++ scheme → kate-plusplus apply")
+    else:
+        ok("Window colours follow your desktop")
     if state.get("profile") == "caelestia":
         if have("caelestia"):
             ok("Caelestia CLI")
@@ -905,6 +967,7 @@ def do_uninstall(args):
     for f in (kate.data / "org.kde.syntax-highlighting/themes").glob(f"{APP}-*.theme"):
         f.unlink()
     (XDG_DATA / "icons/hicolor/scalable/apps/kate-plusplus.svg").unlink(missing_ok=True)
+    window.remove_schemes(kate)
     if PRE_INSTALL.exists() and (args.yes or ask("Put your Kate settings back to how they were before Kate++?")):
         shutil.copy2(PRE_INSTALL, kate.katerc)
         step("Original Kate settings restored")
@@ -912,6 +975,9 @@ def do_uninstall(args):
         step("Your previous Kate settings restored")
     else:                               # older install without records and without a backup
         remove_managed_katerc(kate)
+        scheme = core.read_rc_value(kate.katerc, "[UiSettings]", "ColorScheme")
+        if scheme and scheme.startswith(window.PREFIX):   # its file is gone; a manual pick stays
+            core.merge_rc(kate.katerc, [("[UiSettings]", "ColorScheme", "@delete")])
         step("Kate++ settings removed (no record of your earlier values was available)")
     shutil.rmtree(STATE_DIR, ignore_errors=True)
     if BIN_LINK.is_symlink():
