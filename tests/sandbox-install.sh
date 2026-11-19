@@ -55,4 +55,65 @@ DESK=KDE run uninstall --yes
 [[ ! -s $H/.config/katerc ]] || ! grep -q 'Notepad++\|Kate++' "$H/.config/katerc" || die "fresh uninstall left Kate++ keys"
 pass "plasma install + clean uninstall"
 
+# --- 3. user values Kate++ overwrites come back exactly, even without the full backup ---
+H=$root/restore; mkdir -p "$H/.config"
+printf '[General]\nTabbar Tab Limit=5\nShow Status Bar=false\nMy Own Key=1\n\n[KTextEditor Renderer]\nColor Theme=Dracula\n' > "$H/.config/katerc"
+cp "$H/.config/katerc" "$root/katerc.user"
+run install --yes
+grep -q '^Tabbar Tab Limit=0' "$H/.config/katerc" || die "install did not apply Kate++ settings"
+rm "$H/.local/state/kate-plusplus/katerc.before-kate-plusplus"   # force the key-by-key path
+run uninstall --yes
+diff -u "$root/katerc.user" "$H/.config/katerc" || die "overwritten user values were not restored exactly"
+pass "uninstall restores each overwritten value exactly"
+
+# --- upgrade from 1.0.x (no per-key records yet): originals come from the pre-install backup ---
+H=$root/upgrade; mkdir -p "$H/.config"
+printf '[General]\nTabbar Tab Limit=5\n\n[KTextEditor Renderer]\nColor Theme=Dracula\n' > "$H/.config/katerc"
+cp "$H/.config/katerc" "$root/katerc.upgrade"
+run install --yes
+python3 - "$H/.local/state/kate-plusplus/state.json" <<'PY'
+import json, sys
+p = sys.argv[1]; s = json.load(open(p)); s.pop("katerc_before", None); json.dump(s, open(p, "w"))
+PY
+run apply --yes                                                        # 1.0.x → this version
+rm "$H/.local/state/kate-plusplus/katerc.before-kate-plusplus"
+run uninstall --yes
+diff -u "$root/katerc.upgrade" "$H/.config/katerc" || die "upgrade recorded Kate++ values instead of the originals"
+pass "upgrade: originals are taken from the pre-install backup"
+
+# --- legacy: no records and no backup → managed settings removed, not falsely 'restored' ---
+H=$root/legacy; mkdir -p "$H/.config"
+run install --yes
+python3 - "$H/.local/state/kate-plusplus/state.json" <<'PY'
+import json, sys
+p = sys.argv[1]; s = json.load(open(p)); s.pop("katerc_before", None); json.dump(s, open(p, "w"))
+PY
+rm -f "$H/.local/state/kate-plusplus/katerc.before-kate-plusplus"
+out=$(env -i HOME="$H" PATH=/usr/bin:/bin KPP_TEST=1 ./bin/kate-plusplus uninstall --yes 2>&1)
+grep -q 'Kate++ settings removed' <<<"$out" || die "legacy uninstall should say settings were removed"
+grep -q '^Tabbar Tab Limit=' "$H/.config/katerc" && die "legacy uninstall left Kate++ settings behind"
+pass "legacy uninstall removes Kate++ settings and says so"
+
+# --- legacy + 'theme' before 'apply', no backup: partial records must not count as complete ---
+H=$root/partial; mkdir -p "$H/.config"
+run install --yes
+python3 - "$H/.local/state/kate-plusplus/state.json" <<'PY'
+import json, sys
+p = sys.argv[1]; s = json.load(open(p)); s.pop("katerc_before", None); s.pop("katerc_complete", None); json.dump(s, open(p, "w"))
+PY
+rm -f "$H/.local/state/kate-plusplus/katerc.before-kate-plusplus"
+sed -i 's/^source = .*/source = light/' "$H/.config/kate-plusplus/config.ini"
+run theme                                     # records only the two renderer keys
+python3 - "$H/.local/state/kate-plusplus/state.json" <<'PY' || die "theme did not create the partial legacy records"
+import json, sys
+s = json.load(open(sys.argv[1]))
+assert s.get("katerc_complete") is False, s.get("katerc_complete")
+keys = set(s.get("katerc_before", {}))
+assert keys == {"[KTextEditor Renderer]\tAuto Color Theme Selection", "[KTextEditor Renderer]\tColor Theme"}, keys
+PY
+out=$(env -i HOME="$H" PATH=/usr/bin:/bin KPP_TEST=1 ./bin/kate-plusplus uninstall --yes 2>&1)
+grep -q 'Kate++ settings removed' <<<"$out" || die "partial legacy records were treated as a full restore"
+grep -q '^Tabbar Tab Limit=' "$H/.config/katerc" && die "partial legacy uninstall left Kate++ settings behind"
+pass "partial legacy records fall back to removing Kate++ settings"
+
 echo "All sandbox tests passed."

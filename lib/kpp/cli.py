@@ -221,7 +221,66 @@ def ensure_sessions(kate):
     step(f"Memory: \"{SESSION}\" session with stash (no save prompts, tabs survive restarts)")
 
 
-def kate_settings(cfg, kate, theme_name):
+PRE_INSTALL = STATE_DIR / "katerc.before-kate-plusplus"
+
+
+def managed_keys():
+    """Every katerc key Kate++ may set: config/kate.ini plus the ones built from config.ini."""
+    r = "[KTextEditor Renderer]"
+    keys = [(g, k) for g, k, _ in core.read_settings_ini(REPO / "config/kate.ini")]
+    return keys + [(r, "Text Font"), (r, "Line Height Multiplier"), (r, "Color Theme"),
+                   (r, "Auto Color Theme Selection"), ("[KTextEditor View]", "Scroll Bar MiniMap")]
+
+
+def set_katerc(kate, state, settings):
+    """Write Kate settings, remembering each key's value from before Kate++ first touched it,
+    so uninstall can put back exactly that (or remove the key if there was none).
+
+    The original comes from the pre-install backup when there is one, and the record is saved
+    *before* katerc changes, so an error in between can't lose it. `katerc_complete` says
+    whether the records describe the true originals: always for new installs; for upgrades
+    from versions without records only when the pre-install backup exists (then every
+    managed key is seeded from it at once)."""
+    if "katerc_before" not in state:
+        state["katerc_before"] = {}
+        legacy = bool(state.get("version"))          # installed by a version without records
+        if legacy and PRE_INSTALL.exists():
+            for group, key in managed_keys():
+                state["katerc_before"][f"{group}\t{key}"] = core.read_rc_value(PRE_INSTALL, group, key)
+        state["katerc_complete"] = not legacy or PRE_INSTALL.exists()
+        core.save_state(state)
+    before = state["katerc_before"]
+    new = False
+    for group, key, _ in settings:
+        k = f"{group}\t{key}"
+        if k not in before:
+            source = PRE_INSTALL if PRE_INSTALL.exists() else kate.katerc
+            before[k] = core.read_rc_value(source, group, key)
+            new = True
+    if new:
+        core.save_state(state)
+    core.merge_rc(kate.katerc, settings)
+
+
+def restore_katerc(kate, state) -> bool:
+    """Put recorded values back. Returns False when there were no records to restore from."""
+    before = state.get("katerc_before", {})
+    if not before or not state.get("katerc_complete", False):
+        return False
+    changes = []
+    for k, old in before.items():
+        group, key = k.split("\t", 1)
+        changes.append((group, key, "@delete" if old is None else old))
+    core.merge_rc(kate.katerc, changes)
+    return True
+
+
+def remove_managed_katerc(kate):
+    """Fallback without complete records or a backup: remove the settings Kate++ manages."""
+    core.merge_rc(kate.katerc, [(g, k, "@delete") for g, k in managed_keys()])
+
+
+def kate_settings(cfg, kate, theme_name, state):
     settings = core.read_settings_ini(REPO / "config/kate.ini")
     r = "[KTextEditor Renderer]"
     font = cfg.get("editor", "font")
@@ -241,7 +300,7 @@ def kate_settings(cfg, kate, theme_name):
     ]
     if theme_name:
         settings += [(r, "Auto Color Theme Selection", "false"), (r, "Color Theme", theme_name)]
-    core.merge_rc(kate.katerc, settings)
+    set_katerc(kate, state, settings)
     step(f"Editor: {font} {size}pt · tabs, minimap, function list, macros, stash")
 
 
@@ -457,11 +516,10 @@ def do_apply(args, first_install=False):
     core.wait_for_kate_closed(kate)
 
     section("Safety first")
-    pre = STATE_DIR / "katerc.before-kate-plusplus"
-    if kate.katerc.exists() and not pre.exists():
-        pre.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(kate.katerc, pre)
-        step(f"Original Kate settings saved  {DIM}{pre}{RESET}")
+    if kate.katerc.exists() and not PRE_INSTALL.exists() and not core.load_state():
+        PRE_INSTALL.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(kate.katerc, PRE_INSTALL)
+        step(f"Original Kate settings saved  {DIM}{PRE_INSTALL}{RESET}")
     snap = make_backup(kate, force=True, label="pre-apply")
     if snap:
         step(f"Snapshot of sessions & tabs   {DIM}{snap.name}{RESET}")
@@ -473,7 +531,7 @@ def do_apply(args, first_install=False):
     ensure_sessions(kate)
     source = resolve_theme_source(cfg, profile)
     theme_name = build_themes(cfg, kate, source)
-    kate_settings(cfg, kate, theme_name)
+    kate_settings(cfg, kate, theme_name, state)
     if theme_name:
         detail = (f"{cfg.get('theme', 'syntax-colors')} syntax colours" if source in THEME_NAMES
                   else "ships with Kate" if source.startswith("kate:")
@@ -531,8 +589,10 @@ def do_theme(args):
         if core.kate_running(kate):
             info(f"Restart Kate (or pick {name} in Settings → Configure Kate → Color Themes)")
         else:
-            core.merge_rc(kate.katerc, [("[KTextEditor Renderer]", "Auto Color Theme Selection", "false"),
-                                        ("[KTextEditor Renderer]", "Color Theme", name)])
+            state = core.load_state()
+            set_katerc(kate, state, [("[KTextEditor Renderer]", "Auto Color Theme Selection", "false"),
+                                     ("[KTextEditor Renderer]", "Color Theme", name)])
+            core.save_state(state)
 
 
 # ======================================================================= backups
@@ -744,16 +804,14 @@ def do_uninstall(args):
     for f in (kate.data / "org.kde.syntax-highlighting/themes").glob(f"{APP}-*.theme"):
         f.unlink()
     (XDG_DATA / "icons/hicolor/scalable/apps/kate-plusplus.svg").unlink(missing_ok=True)
-    pre = STATE_DIR / "katerc.before-kate-plusplus"
-    if pre.exists() and (args.yes or ask("Put your Kate settings back to how they were before Kate++?")):
-        shutil.copy2(pre, kate.katerc)
+    if PRE_INSTALL.exists() and (args.yes or ask("Put your Kate settings back to how they were before Kate++?")):
+        shutil.copy2(PRE_INSTALL, kate.katerc)
         step("Original Kate settings restored")
-    else:  # fresh Kate before Kate++: take back every key we set
-        ours = core.read_settings_ini(REPO / "config/kate.ini")
-        r = "[KTextEditor Renderer]"
-        extra = [(r, "Text Font"), (r, "Line Height Multiplier"), (r, "Color Theme"),
-                 (r, "Auto Color Theme Selection"), ("[KTextEditor View]", "Scroll Bar MiniMap")]
-        core.merge_rc(kate.katerc, [(g, k, "@delete") for g, k, _ in ours] + [(g, k, "@delete") for g, k in extra])
+    elif restore_katerc(kate, state):  # exactly what each key was before Kate++
+        step("Your previous Kate settings restored")
+    else:                               # older install without records and without a backup
+        remove_managed_katerc(kate)
+        step("Kate++ settings removed (no record of your earlier values was available)")
     shutil.rmtree(STATE_DIR, ignore_errors=True)
     if BIN_LINK.is_symlink():
         BIN_LINK.unlink()
