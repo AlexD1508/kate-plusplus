@@ -6,26 +6,34 @@ on:
   pull_request:
 
 jobs:
+  oldest-python:
+    name: Python 3.9 compatibility
+    runs-on: ubuntu-latest
+    container: python:3.9-slim        # oldest supported Python
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compiles and imports on 3.9
+        run: |
+          python -m py_compile lib/kpp/*.py bin/kate-plusplus tools/*.py
+          PYTHONPATH=lib python -c "import kpp.cli, kpp.theme; print('ok')"
+          python bin/kate-plusplus --version
+
   checks:
     name: Lint & unit tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with: { python-version: "3.9" }   # oldest supported
-      - name: Python compiles on 3.9
-        run: python -m py_compile lib/kpp/*.py bin/kate-plusplus tools/make-gallery.py
       - name: Pyflakes
-        run: pip install pyflakes && pyflakes lib/kpp bin/kate-plusplus tools
+        run: pipx run pyflakes lib/kpp bin/kate-plusplus tools
       - name: ShellCheck
-        run: shellcheck install.sh tests/sandbox-install.sh
+        run: shellcheck install.sh tests/sandbox-install.sh tools/screenshot-kate.sh
       - name: Notepad++ Tools (JavaScript)
         run: node tests/kate-scripts.test.js kate-scripts/kate-plusplus.js
       - name: Shortcut schemes are valid XML
-        run: for f in shortcuts/*/Notepad++; do python -c "import sys,xml.dom.minidom as m; m.parse(sys.argv[1])" "$f"; done
+        run: for f in shortcuts/*/Notepad++; do python3 -c "import sys,xml.dom.minidom as m; m.parse(sys.argv[1])" "$f"; done
       - name: Theme engine keeps contrast floors
         run: |
-          python - <<'PY'
+          python3 - <<'PY'
           import sys; sys.path.insert(0, "lib")
           from kpp import theme as T
           for src in ("dark", "light"):
