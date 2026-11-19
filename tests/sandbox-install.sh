@@ -55,4 +55,36 @@ DESK=KDE run uninstall --yes
 [[ ! -s $H/.config/katerc ]] || ! grep -q 'Notepad++\|Kate++' "$H/.config/katerc" || die "fresh uninstall left Kate++ keys"
 pass "plasma install + clean uninstall"
 
+# --- Language menu touches only what Kate++ owns ---
+H=$root/menu; mkdir -p "$H/.local/share/kxmlgui5/katepart"
+cat > "$H/.local/share/kxmlgui5/katepart/katepart5ui.rc" <<'XML'
+<!DOCTYPE gui SYSTEM 'kpartgui.dtd'>
+<gui name="KatePartView" version="999">
+ <MenuBar>
+  <Menu name="tools"><text>Tools</text><Action name="tools_highlighting"/></Menu>
+  <Menu name="settings"><text>Settings</text></Menu>
+ </MenuBar>
+ <ActionProperties>
+  <Action name="tools_highlighting" shortcut="Ctrl+Alt+L" text="My Highlighting"/>
+ </ActionProperties>
+</gui>
+XML
+run install --yes
+grep -q 'text="&amp;Language"' "$H/.local/share/kxmlgui5/katepart/katepart5ui.rc" || die "Language menu not added"
+sed -i 's/^language-menu = true/language-menu = false/' "$H/.config/kate-plusplus/config.ini"
+run apply --yes
+run uninstall --yes
+python3 - "$H/.local/share/kxmlgui5/katepart/katepart5ui.rc" <<'PY' || die "the user's own entry was not restored exactly"
+import sys, xml.dom.minidom as m
+root = m.parse(sys.argv[1]).documentElement
+bar = next(n for n in root.childNodes if n.nodeType == 1 and n.tagName == "MenuBar")
+assert not any(n.nodeType == 1 and n.tagName == "Action" for n in bar.childNodes), "Kate++ entry left on the bar"
+a = [a for a in root.getElementsByTagName("Action") if a.parentNode.tagName == "ActionProperties"
+     and a.getAttribute("name") == "tools_highlighting"]
+assert len(a) == 1, a
+assert a[0].getAttribute("text") == "My Highlighting" and a[0].getAttribute("shortcut") == "Ctrl+Alt+L"
+assert not [k for k in a[0].attributes.keys() if k.startswith("kate-plusplus")], a[0].attributes.keys()
+PY
+pass "Language menu: only Kate++'s own entries are removed, the user's label comes back"
+
 echo "All sandbox tests passed."

@@ -128,8 +128,17 @@ def install_files(kate, state):
     shortcuts.install(kate, REPO, state)
     step("Notepad++ keyboard shortcuts  (merged: every other key keeps Kate's default)")
 
+    dst = kate.data / "katepart5/script/commands/kate-plusplus.js"
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(REPO / "kate-scripts/kate-plusplus.js", dst)
+    step("Notepad++ tools  (JSON, Base64, URL, dates, line clean-up)")
 
-def language_menu(cfg, kate, quiet=False):
+    icon = XDG_DATA / "icons/hicolor/scalable/apps/kate-plusplus.svg"
+    icon.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(REPO / "assets/icon.svg", icon)
+
+
+def language_menu(cfg, kate, *, quiet=False):
     if not cfg.flag("features", "language-menu"):
         menus.remove(kate)
         return
@@ -141,14 +150,6 @@ def language_menu(cfg, kate, quiet=False):
     else:
         info("Language menu: appears after Kate's first start (added automatically)")
 
-    dst = kate.data / "katepart5/script/commands/kate-plusplus.js"
-    dst.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(REPO / "kate-scripts/kate-plusplus.js", dst)
-    step("Notepad++ tools  (JSON, Base64, URL, dates, line clean-up)")
-
-    icon = XDG_DATA / "icons/hicolor/scalable/apps/kate-plusplus.svg"
-    icon.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(REPO / "assets/icon.svg", icon)
 
 
 def session_files(kate):
