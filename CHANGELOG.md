@@ -9,6 +9,12 @@ All notable changes to Kate++ are listed here. The format follows
 ### Added
 - <kbd>Ctrl</kbd>+<kbd>T</kbd> opens a new tab (Ctrl+N still works). Transpose Characters
   moves off Ctrl+T and stays available in the command bar.
+- **Ten popular themes** Kate doesn't ship, built from their official palettes and lifted to
+  WCAG AA contrast: Rosé Pine (Main, Moon, Dawn), Kanagawa (Wave, Dragon, Lotus),
+  Everforest (Dark, Light), Night Owl and Synthwave '84.
+- `source` in `config.ini` accepts **any theme by name**, including every theme that ships
+  with Kate (`Catppuccin Mocha`, `Dracula`, `Nord`, …). Family names (`rose-pine`,
+  `kanagawa`, `everforest`) follow your system's light/dark preference.
 
 ## [1.0.1] — 2026-11-19
 
