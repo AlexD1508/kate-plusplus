@@ -47,9 +47,12 @@ def _kate_at_least(kate, version) -> bool:
 
 def settings_path(kate):
     """Mirror Kate: from 26.08 a non-empty [kateformatplugin] configPath wins over the default
-    file; older Kate always reads <config>/kate/formatting/settings.json."""
+    file; older Kate always reads <config>/kate/formatting/settings.json. None for a relative
+    configPath, which Kate resolves against whatever directory it was started from."""
     custom = (core.read_rc_value(kate.katerc, "[kateformatplugin]", "configPath")
               if _kate_at_least(kate, CONFIG_PATH_MIN_KATE) else None)
+    if custom and not Path(custom).expanduser().is_absolute():
+        return None   # Kate reads it relative to its own working directory: unknowable here
     path = Path(custom).expanduser() if custom else kate.config / "kate" / "formatting" / "settings.json"
     return _canonical(path)
 
@@ -85,6 +88,10 @@ def _records(state):
 
 def set_format_on_save(kate, state, enabled: bool):
     path = settings_path(kate)
+    if path is None:
+        core.warn("Kate's Format plugin uses a relative configPath, so its file depends on where "
+                  "Kate is started; leaving format-on-save as it is (use an absolute path)")
+        return
     data = _read(path) if path.exists() else {}
     if data is None:
         core.warn(f"{path} isn't valid JSON; leaving format-on-save as it is")

@@ -366,7 +366,7 @@ H=$root/format2; mkdir -p "$H/.config"
 run install --yes; run uninstall --yes
 [[ -e $H/.config/kate/formatting/settings.json ]] && die "uninstall left a formatting settings file Kate++ created"
 # custom [kateformatplugin] configPath (Kate 26.08+ reads it): that file is changed and restored
-if PYTHONPATH=lib python3 -c 'import sys; from kpp import core, formatting
+if env -i HOME="$root/probe" PATH=/usr/bin:/bin KPP_TEST=1 PYTHONPATH=lib python3 -c 'import sys; from kpp import core, formatting
 k = core.detect_kate(); sys.exit(0 if formatting._kate_at_least(k, formatting.CONFIG_PATH_MIN_KATE) else 1)'; then
     H=$root/format3; mkdir -p "$H/.config" "$H/fmt"
     printf '[kateformatplugin]\nconfigPath=%s\n' "$H/fmt/my.json" > "$H/.config/katerc"
@@ -401,13 +401,15 @@ else   # older Kate ignores configPath, so the default file is the one Kate++ mu
     run uninstall --yes
 fi
 # Kate before 26.08 ignores configPath: Kate++ must then change the default file
-env -i HOME="$H" PATH=/usr/bin:/bin PYTHONPATH=lib python3 - <<'PY' || die "configPath used on a Kate that ignores it"
+env -i HOME="$H" PATH=/usr/bin:/bin KPP_TEST=1 PYTHONPATH=lib python3 - <<'PY' || die "configPath used on a Kate that ignores it"
 import pathlib
 from kpp import core, formatting
 k = core.Kate("native", ["kate"], core.XDG_CONFIG, core.XDG_DATA, "25.08.0")
 assert formatting.settings_path(k) == (core.XDG_CONFIG / "kate/formatting/settings.json").resolve()
 k.version = "26.08.0"
 assert formatting.settings_path(k) != (core.XDG_CONFIG / "kate/formatting/settings.json").resolve()
+core.merge_rc(k.katerc, [("[kateformatplugin]", "configPath", "fmt/relative.json")])
+assert formatting.settings_path(k) is None, "a relative configPath must not be guessed"
 PY
 # a typo in format-on-save warns and keeps the default (off) instead of silently meaning false
 H=$root/format4; mkdir -p "$H/.config"

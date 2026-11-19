@@ -41,9 +41,11 @@ All notable changes to Kate++ are listed here. The format follows
 - `doctor` warns when the **qtengine** platform theme (used by Caelestia) asks for a Qt style
   that isn't installed, e.g. Darkly, and says how to install it. Other platform themes such
   as qt6ct aren't checked.
-- **Prettify:** <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd> formats the whole file through Kate's Format
-  plugin (prettier, ruff, jq, clang-format, shfmt, …). `doctor` lists installed formatters with
-  install hints.
+- **Prettify:** <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd> (Kate 24.08+; on older Kate use
+  the command bar → *Format Document*) formats the file through Kate's Format plugin
+  (prettier, ruff, jq, clang-format, shfmt, …). On Kate 24.08, clang-format only reformats
+  lines changed since the last Git commit; newer Kate formats the whole file. `doctor` lists
+  installed formatters with install hints.
 
 ### Changed
 - Kate's format-on-save (on by default in Kate) is turned off unless you set
