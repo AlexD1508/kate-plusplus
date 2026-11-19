@@ -12,6 +12,6 @@ pkgbase = kate-plusplus
 	optdepends = ttf-jetbrains-mono-nerd: recommended editor font
 	optdepends = xdg-utils: make Kate the default text editor
 	source = kate-plusplus-1.0.0.tar.gz::https://github.com/AlexD1508/kate-plusplus/archive/refs/tags/v1.0.0.tar.gz
-	sha256sums = 4ada757193606d997cd9c6d526a3e650776d2bf12b7d88115b32b81c6a0597d1
+	sha256sums = fa1be19e5c7d570e94b43807d3c241c9d7d1732382557d4262e1b6914a2b627a
 
 pkgname = kate-plusplus
