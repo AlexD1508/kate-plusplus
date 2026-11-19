@@ -251,13 +251,18 @@ def pin_main_session():
                             Path("/usr/local/share/applications/org.kde.kate.desktop")) if p.exists()), None)
     if not src:
         return
+    dest = XDG_DATA / "applications/org.kde.kate.desktop"
+    if dest.exists() and "X-KatePlusPlus=true" not in dest.read_text(encoding="utf-8", errors="replace"):
+        warn(f"Not touching your own {dest}; Kate files may open in the Scratchpad session "
+             "while it runs. Add `-s Notepad` to its Exec= lines to avoid that.")
+        return
     out = []
     for line in src.read_text(encoding="utf-8").splitlines():
         if line.startswith("Exec=kate") and " -s " not in line:
             line = line.replace("Exec=kate", f"Exec=kate -s {SESSION}", 1)
         out.append(line)
     out.append("X-KatePlusPlus=true")
-    core.atomic_write(XDG_DATA / "applications/org.kde.kate.desktop", "\n".join(out) + "\n")
+    core.atomic_write(dest, "\n".join(out) + "\n")
 
 
 def remove_overlay():
