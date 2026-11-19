@@ -14,6 +14,10 @@ All notable changes to Kate++ are listed here. The format follows
   with Kate (`Catppuccin Mocha`, `Dracula`, `Nord`, …). Family names (`rose-pine`,
   `kanagawa`, `everforest`) follow your system's light/dark preference.
 
+### Fixed
+- Uninstall now restores **exactly** the value each Kate setting had before Kate++, even
+  when you skip restoring the full settings backup (previously those keys were deleted).
+
 ## [1.0.1] — 2026-11-19
 
 ### Fixed
