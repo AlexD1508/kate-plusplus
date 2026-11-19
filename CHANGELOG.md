@@ -27,6 +27,11 @@ All notable changes to Kate++ are listed here. The format follows
   highlighting, inlay hints, hover docs, signature help and diagnostics
   (`[editor] smart-highlighting = true`). `doctor` lists installed language servers with
   install hints for missing popular ones.
+- **Auto-save (opt-in):** `[editor] auto-save = off | focus | <seconds>` saves tabs that
+  have a local file path when the editor loses focus (also when moving to another part of
+  Kate) and, with a number, N seconds (5–3600) after your last edit. Untitled tabs stay
+  stashed; a path opened before it existed is created on the first auto-save. `off`
+  (default) leaves Kate's own setting alone.
 
 ### Fixed
 - The opt-in pop-up notepad no longer overwrites a `org.kde.kate.desktop` launcher override

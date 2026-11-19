@@ -40,12 +40,146 @@ run backup
 ls "$H/.local/share/kate-plusplus/backups/"*.tar.gz >/dev/null || die "no snapshot"
 pass "backup"
 
+grep -q '^Auto Save' "$H/.config/katerc" && die "auto-save = off must not touch Kate's auto-save keys"
+sed -i 's/^auto-save = off/auto-save = 30/' "$H/.config/kate-plusplus/config.ini"
+run apply --yes
+grep -q '^Auto Save=true' "$H/.config/katerc"              || die "auto-save interval not enabled"
+grep -q '^Auto Save Interval=30' "$H/.config/katerc"       || die "auto-save interval not set"
+grep -q '^Auto Save On Focus Out=true' "$H/.config/katerc" || die "auto-save on focus out not set"
+sed -i 's/^auto-save = 30/auto-save = focus/' "$H/.config/kate-plusplus/config.ini"
+run apply --yes
+grep -q '^Auto Save=true' "$H/.config/katerc"              || die "focus mode needs the Auto Save master switch (KTextEditor checks both)"
+grep -q '^Auto Save On Focus Out=true' "$H/.config/katerc" || die "focus mode must save on focus out"
+grep -q '^Auto Save Interval=0$' "$H/.config/katerc"       || die "focus mode must set the idle interval to 0 (kdeglobals may cascade one)"
+sed -i 's/^auto-save = focus/auto-save = 2/' "$H/.config/kate-plusplus/config.ini"
+run apply --yes
+grep -q '^Auto Save' "$H/.config/katerc"                   && die "an out-of-range value must turn Kate++ auto-save off"
+sed -i 's/^auto-save = 2/auto-save = focus/' "$H/.config/kate-plusplus/config.ini"
+run apply --yes
+sed -i 's/^auto-save = focus/auto-save = nonsense/' "$H/.config/kate-plusplus/config.ini"
+run apply --yes
+grep -q '^Auto Save' "$H/.config/katerc"                   && die "an invalid value must undo Kate++ auto-save"
+sed -i 's/^auto-save = nonsense/auto-save = focus/' "$H/.config/kate-plusplus/config.ini"
+run apply --yes
+grep -q '^Auto Save On Focus Out=true' "$H/.config/katerc" || die "focus not re-enabled before the off check"
+sed -i 's/^auto-save = focus/auto-save = off/' "$H/.config/kate-plusplus/config.ini"
+run apply --yes
+grep -q '^Auto Save' "$H/.config/katerc"                   && die "auto-save = off did not undo Kate++'s keys"
+pass "auto-save off / idle delay / focus out / invalid values"
+
 run uninstall --yes
 diff -u "$root/katerc.orig" "$H/.config/katerc"    || die "katerc not restored"
 diff -u "$root/mime.orig" "$H/.config/mimeapps.list" || die "mimeapps.list not restored"
 [[ -f $H/.local/share/kate/sessions/Notepad.katesession ]] || die "user session was deleted"
 grep -q '^\[lspclient\]' "$H/.config/katerc" && die "uninstall left LSP settings behind"
 pass "uninstall restores everything, keeps notes"
+
+# --- auto-save is removed even when the user declines restoring the full backup ----
+H=$root/autosave; mkdir -p "$H/.config"
+printf '[General]\nRecent Files Count=10\n' > "$H/.config/katerc"
+run install --yes
+sed -i 's/^auto-save = off/auto-save = focus/' "$H/.config/kate-plusplus/config.ini"
+run apply --yes
+# uninstall, answering "yes, remove" but "no" to restoring the full settings backup
+env -i HOME="$H" PATH=/usr/bin:/bin KPP_TEST=1 python3 - "$PWD/lib" >/dev/null <<'PY'
+import sys
+sys.path.insert(0, sys.argv[1])
+from types import SimpleNamespace
+from kpp import cli
+answers = iter([True, False])           # remove Kate++? yes · restore full backup? no
+cli.ask = lambda *a, **k: next(answers)
+cli.do_uninstall(SimpleNamespace(yes=False))
+PY
+grep -q '^Auto Save' "$H/.config/katerc" && die "declined restore left Kate++ auto-save enabled"
+grep -q '^Recent Files Count=10' "$H/.config/katerc" || die "declined restore lost the user's own setting"
+pass "auto-save removed even when restoring the full backup is declined"
+
+# --- the user's own Kate auto-save setting survives off, on → off, and uninstall ---
+H=$root/ownautosave; mkdir -p "$H/.config"
+printf '[KTextEditor Document]\nAuto Save=true\nAuto Save Interval=60\n' > "$H/.config/katerc"
+run install --yes
+grep -q '^Auto Save Interval=60' "$H/.config/katerc" || die "auto-save = off changed the user's own setting"
+sed -i 's/^auto-save = off/auto-save = focus/' "$H/.config/kate-plusplus/config.ini"
+run apply --yes
+grep -q '^Auto Save Interval=0$' "$H/.config/katerc" || die "focus mode kept an interval"
+sed -i 's/^auto-save = focus/auto-save = off/' "$H/.config/kate-plusplus/config.ini"
+run apply --yes
+grep -q '^Auto Save Interval=60' "$H/.config/katerc"   || die "switching back to off didn't restore the user's interval"
+grep -q '^Auto Save On Focus Out' "$H/.config/katerc"  && die "switching back to off left Kate++'s focus key"
+sed -i 's/^auto-save = off/auto-save = 30/' "$H/.config/kate-plusplus/config.ini"
+run apply --yes
+rm "$H/.local/state/kate-plusplus/katerc.before-kate-plusplus"       # force the per-key restore
+run uninstall --yes
+grep -q '^Auto Save=true' "$H/.config/katerc"        || die "uninstall didn't restore the user's Auto Save"
+grep -q '^Auto Save Interval=60' "$H/.config/katerc" || die "uninstall didn't restore the user's interval"
+pass "user's own Kate auto-save setting is restored exactly"
+
+# --- after "off", auto-save is the user's again: a later own setting survives uninstall ---
+H=$root/autosaveafteroff; mkdir -p "$H/.config"
+run install --yes
+sed -i 's/^auto-save = off/auto-save = focus/' "$H/.config/kate-plusplus/config.ini"
+run apply --yes
+sed -i 's/^auto-save = focus/auto-save = off/' "$H/.config/kate-plusplus/config.ini"
+run apply --yes
+printf '\n[KTextEditor Document]\nAuto Save=true\nAuto Save Interval=60\n' >> "$H/.config/katerc"   # user's own, later
+rm -f "$H/.local/state/kate-plusplus/katerc.before-kate-plusplus"                                   # per-key restore
+run uninstall --yes
+grep -q '^Auto Save Interval=60' "$H/.config/katerc" || die "uninstall overwrote auto-save the user set after 'off'"
+grep -q '^Auto Save=true' "$H/.config/katerc"        || die "uninstall overwrote the user's later Auto Save"
+pass "after off, a later own auto-save setting survives uninstall"
+
+# --- turning auto-save on again after 'off' records the user's values from that moment ---
+H=$root/autosavereacquire; mkdir -p "$H/.config"
+printf '[KTextEditor Document]\nAuto Save Interval=90\n' > "$H/.config/katerc"   # pre-install value
+run install --yes
+cfg=$H/.config/kate-plusplus/config.ini
+sed -i 's/^auto-save = off/auto-save = focus/' "$cfg"; run apply --yes
+sed -i 's/^auto-save = focus/auto-save = off/' "$cfg"; run apply --yes
+sed -i 's/^Auto Save Interval=90$/Auto Save Interval=45/' "$H/.config/katerc"     # user's own, later
+grep -q '^Auto Save Interval=45$' "$H/.config/katerc" || die "test setup: interval not changed"
+sed -i 's/^auto-save = off/auto-save = focus/' "$cfg"; run apply --yes
+rm -f "$H/.local/state/kate-plusplus/katerc.before-kate-plusplus"                 # per-key restore
+run uninstall --yes
+grep -q '^Auto Save Interval=45$' "$H/.config/katerc" || die "uninstall restored the pre-install interval, not the user's later one"
+pass "re-enabling auto-save records the user's current values"
+
+# --- legacy fallback (records incomplete, no backup) puts recorded auto-save values back ---
+H=$root/legacyautosave; mkdir -p "$H/.config"
+printf '[KTextEditor Document]\nAuto Save=true\nAuto Save Interval=60\n' > "$H/.config/katerc"
+run install --yes
+sed -i 's/^auto-save = off/auto-save = focus/' "$H/.config/kate-plusplus/config.ini"
+run apply --yes
+python3 - "$H/.local/state/kate-plusplus/state.json" <<'PY'
+import json, sys
+p = sys.argv[1]; s = json.load(open(p)); s["katerc_complete"] = False; json.dump(s, open(p, "w"))
+PY
+rm "$H/.local/state/kate-plusplus/katerc.before-kate-plusplus"
+run uninstall --yes
+grep -q '^Auto Save=true' "$H/.config/katerc"        || die "legacy fallback deleted the recorded Auto Save"
+grep -q '^Auto Save Interval=60' "$H/.config/katerc" || die "legacy fallback deleted the recorded interval"
+grep -q '^Auto Save On Focus Out' "$H/.config/katerc" && die "legacy fallback kept Kate++'s focus key"
+pass "legacy uninstall restores recorded auto-save values"
+
+# --- ownership is on disk before the keys change: a later failure in apply can't orphan them ---
+H=$root/autosavecrash; mkdir -p "$H/.config"
+run install --yes
+sed -i 's/^auto-save = off/auto-save = focus/' "$H/.config/kate-plusplus/config.ini"
+env -i HOME="$H" PATH=/usr/bin:/bin KPP_TEST=1 python3 - "$PWD/lib" >/dev/null 2>&1 <<'PY' && die "the simulated failure didn't happen"
+import sys
+sys.path.insert(0, sys.argv[1])
+from types import SimpleNamespace
+from kpp import cli
+def boom(*a, **k):
+    raise RuntimeError("simulated failure after auto-save")
+cli.set_default_editor = boom          # a later apply step fails
+cli.do_apply(SimpleNamespace(yes=True))
+PY
+grep -q '^Auto Save On Focus Out=true' "$H/.config/katerc" || die "setup: auto-save wasn't enabled before the failure"
+grep -q '"auto_save_managed": true' "$H/.local/state/kate-plusplus/state.json" || die "auto-save ownership wasn't saved before the failure"
+sed -i 's/^auto-save = focus/auto-save = off/' "$H/.config/kate-plusplus/config.ini"
+run apply --yes
+grep -q '^Auto Save' "$H/.config/katerc" && die "auto-save stayed on after a failed apply"
+pass "auto-save ownership survives a failure later in apply"
 
 # --- 2. fresh Kate on KDE Plasma ---------------------------------------
 H=$root/plasma; mkdir -p "$H/.config"
