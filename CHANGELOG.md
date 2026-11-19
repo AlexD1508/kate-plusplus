@@ -4,6 +4,12 @@ All notable changes to Kate++ are listed here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+- Uninstall now restores **exactly** the value each Kate setting had before Kate++, even
+  when you skip restoring the full settings backup (previously those keys were deleted).
+
 ## [1.0.1] — 2026-11-19
 
 ### Fixed

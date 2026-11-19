@@ -55,4 +55,15 @@ DESK=KDE run uninstall --yes
 [[ ! -s $H/.config/katerc ]] || ! grep -q 'Notepad++\|Kate++' "$H/.config/katerc" || die "fresh uninstall left Kate++ keys"
 pass "plasma install + clean uninstall"
 
+# --- 3. user values Kate++ overwrites come back exactly, even without the full backup ---
+H=$root/restore; mkdir -p "$H/.config"
+printf '[General]\nTabbar Tab Limit=5\nShow Status Bar=false\nMy Own Key=1\n\n[KTextEditor Renderer]\nColor Theme=Dracula\n' > "$H/.config/katerc"
+cp "$H/.config/katerc" "$root/katerc.user"
+run install --yes
+grep -q '^Tabbar Tab Limit=0' "$H/.config/katerc" || die "install did not apply Kate++ settings"
+rm "$H/.local/state/kate-plusplus/katerc.before-kate-plusplus"   # force the key-by-key path
+run uninstall --yes
+diff -u "$root/katerc.user" "$H/.config/katerc" || die "overwritten user values were not restored exactly"
+pass "uninstall restores each overwritten value exactly"
+
 echo "All sandbox tests passed."

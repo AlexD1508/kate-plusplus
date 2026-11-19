@@ -156,7 +156,27 @@ def ensure_sessions(kate):
     step(f"Memory: \"{SESSION}\" session with stash (no save prompts, tabs survive restarts)")
 
 
-def kate_settings(cfg, kate, theme_name):
+def set_katerc(kate, state, settings):
+    """Write Kate settings, remembering each key's value from before Kate++ first touched it,
+    so uninstall can put back exactly that (or remove the key if there was none)."""
+    before = state.setdefault("katerc_before", {})
+    for group, key, _ in settings:
+        k = f"{group}\t{key}"
+        if k not in before:
+            before[k] = core.read_rc_value(kate.katerc, group, key)
+    core.merge_rc(kate.katerc, settings)
+
+
+def restore_katerc(kate, state):
+    before = state.get("katerc_before", {})
+    changes = []
+    for k, old in before.items():
+        group, key = k.split("\t", 1)
+        changes.append((group, key, "@delete" if old is None else old))
+    core.merge_rc(kate.katerc, changes)
+
+
+def kate_settings(cfg, kate, theme_name, state):
     settings = core.read_settings_ini(REPO / "config/kate.ini")
     r = "[KTextEditor Renderer]"
     font = cfg.get("editor", "font")
@@ -176,7 +196,7 @@ def kate_settings(cfg, kate, theme_name):
     ]
     if theme_name:
         settings += [(r, "Auto Color Theme Selection", "false"), (r, "Color Theme", theme_name)]
-    core.merge_rc(kate.katerc, settings)
+    set_katerc(kate, state, settings)
     step(f"Editor: {font} {size}pt · tabs, minimap, function list, macros, stash")
 
 
@@ -408,7 +428,7 @@ def do_apply(args, first_install=False):
     ensure_sessions(kate)
     source = resolve_theme_source(cfg, profile)
     theme_name = build_themes(cfg, kate, source)
-    kate_settings(cfg, kate, theme_name)
+    kate_settings(cfg, kate, theme_name, state)
     if theme_name:
         step(f"Theme: {theme_name}  {DIM}({cfg.get('theme', 'syntax-colors')} syntax colours){RESET}")
 
@@ -463,8 +483,10 @@ def do_theme(args):
         if core.kate_running(kate):
             info(f"Restart Kate (or pick {name} in Settings → Configure Kate → Color Themes)")
         else:
-            core.merge_rc(kate.katerc, [("[KTextEditor Renderer]", "Auto Color Theme Selection", "false"),
-                                        ("[KTextEditor Renderer]", "Color Theme", name)])
+            state = core.load_state()
+            set_katerc(kate, state, [("[KTextEditor Renderer]", "Auto Color Theme Selection", "false"),
+                                     ("[KTextEditor Renderer]", "Color Theme", name)])
+            core.save_state(state)
 
 
 # ======================================================================= backups
@@ -678,12 +700,9 @@ def do_uninstall(args):
     if pre.exists() and (args.yes or ask("Put your Kate settings back to how they were before Kate++?")):
         shutil.copy2(pre, kate.katerc)
         step("Original Kate settings restored")
-    else:  # fresh Kate before Kate++: take back every key we set
-        ours = core.read_settings_ini(REPO / "config/kate.ini")
-        r = "[KTextEditor Renderer]"
-        extra = [(r, "Text Font"), (r, "Line Height Multiplier"), (r, "Color Theme"),
-                 (r, "Auto Color Theme Selection"), ("[KTextEditor View]", "Scroll Bar MiniMap")]
-        core.merge_rc(kate.katerc, [(g, k, "@delete") for g, k, _ in ours] + [(g, k, "@delete") for g, k in extra])
+    else:  # put back exactly what each key was before Kate++ (or remove it if it didn't exist)
+        restore_katerc(kate, state)
+        step("Your previous Kate settings restored")
     shutil.rmtree(STATE_DIR, ignore_errors=True)
     if BIN_LINK.is_symlink():
         BIN_LINK.unlink()
