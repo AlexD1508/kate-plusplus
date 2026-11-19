@@ -17,9 +17,9 @@ The shortcuts your fingers already know. Colours that match your desktop.
 
 <br>
 
-<img src="assets/before-after.gif" width="860" alt="Kate before and after Kate++">
+<img src="assets/themes.png" width="860" alt="Kate++ themes">
 
-<sub>Stock Kate → Kate++ (same machine, same files)</sub>
+<sub>One theme engine, five moods: it follows your wallpaper, your Plasma colours, or ships its own.</sub>
 
 </div>
 
