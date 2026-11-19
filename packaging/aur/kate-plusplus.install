@@ -1,0 +1,15 @@
+post_install() {
+  echo
+  echo "  Kate++ is installed. Set it up for your account (run as your user, not root):"
+  echo
+  echo "      kate-plusplus install"
+  echo
+}
+
+post_upgrade() {
+  echo
+  echo "  Kate++ was updated. Apply the new version to your account with:"
+  echo
+  echo "      kate-plusplus apply"
+  echo
+}

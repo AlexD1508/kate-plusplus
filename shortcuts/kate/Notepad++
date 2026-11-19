@@ -1,0 +1,6 @@
+<!DOCTYPE gui>
+<gui name="kate" version="1">
+ <ActionProperties scheme="Notepad++">
+  <Action name="file_quit" shortcut=""/>
+ </ActionProperties>
+</gui>

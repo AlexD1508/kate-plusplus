@@ -1,0 +1,32 @@
+name: 🎨 Theme showcase
+description: Show off your Kate++ colours so others can use them.
+labels: [theme]
+body:
+  - type: input
+    id: name
+    attributes:
+      label: Theme name
+      placeholder: "Tokyo Night-ish"
+    validations:
+      required: true
+  - type: textarea
+    id: settings
+    attributes:
+      label: Your [theme] settings
+      description: Copy the [theme] section from ~/.config/kate-plusplus/config.ini
+      render: ini
+      value: |
+        [theme]
+        source = dark
+        accent = #7aa2f7
+        background = #1a1b26
+        syntax-colors = balanced
+    validations:
+      required: true
+  - type: textarea
+    id: shot
+    attributes:
+      label: Screenshot
+      description: Drag an image in here.
+    validations:
+      required: true

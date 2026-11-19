@@ -1,0 +1,28 @@
+# Changelog
+
+All notable changes to Kate++ are listed here. The format follows
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
+[Semantic Versioning](https://semver.org/).
+
+## [1.0.0] — 2026-11-19
+
+First release.
+
+### Added
+- **Session memory**: Kate opens straight into your "Notepad" session; unsaved
+  tabs and edits are stashed on close, no save prompts.
+- **Notepad++ shortcut scheme**: duplicate line, replace, comment, delete line,
+  case, macros; switchable back to Kate's defaults at any time.
+- **Notepad++ Tools**: format/minify JSON, Base64 and URL encode/decode, insert
+  date/time, remove empty/duplicate lines, trim trailing spaces.
+- **Harmonised themes**: Kate++ Caelestia (follows the wallpaper), Kate++ Plasma
+  (follows KDE colours), Kate++ Dark and Light; accent/background overrides and
+  soft/balanced/vivid syntax colours, all contrast-checked.
+- **Pop-up notepad** on Super+J for Caelestia + Hyprland.
+- **Safety snapshots** every 10 minutes with `kate-plusplus restore`.
+- Kate as default editor for text, Markdown, JSON, YAML, logs and config files.
+- `kate-plusplus` CLI and menu: install, apply, config, theme, backup, restore,
+  doctor, update, uninstall.
+- Native and Flatpak Kate support; one-line installer; AUR package.
+
+[1.0.0]: https://github.com/AlexD1508/kate-plusplus/releases/tag/v1.0.0

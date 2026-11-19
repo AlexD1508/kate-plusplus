@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  checks:
+    name: Lint & unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.9" }   # oldest supported
+      - name: Python compiles on 3.9
+        run: python -m py_compile lib/kpp/*.py bin/kate-plusplus tools/make-gallery.py
+      - name: Pyflakes
+        run: pip install pyflakes && pyflakes lib/kpp bin/kate-plusplus tools
+      - name: ShellCheck
+        run: shellcheck install.sh tests/sandbox-install.sh
+      - name: Notepad++ Tools (JavaScript)
+        run: node tests/kate-scripts.test.js kate-scripts/kate-plusplus.js
+      - name: Shortcut schemes are valid XML
+        run: for f in shortcuts/*/Notepad++; do python -c "import sys,xml.dom.minidom as m; m.parse(sys.argv[1])" "$f"; done
+      - name: Theme engine keeps contrast floors
+        run: |
+          python - <<'PY'
+          import sys; sys.path.insert(0, "lib")
+          from kpp import theme as T
+          for src in ("dark", "light"):
+              for inten in T.INTENSITY:
+                  for accent in ("#ff0000", "#00ff00", "#0000ff", "#ffff00", "#888888", "#c3a6ff"):
+                      ui = T.apply_overrides(T.static_ui(src), accent)
+                      t = T.build_theme("t", ui, inten)
+                      bg = t["editor-colors"]["BackgroundColor"][1:]
+                      for k, s in t["text-styles"].items():
+                          if "background-color" in s: continue
+                          c = T.contrast(s["text-color"][1:], bg)
+                          floor = 4.5
+                          assert c >= floor, (src, inten, accent, k, round(c, 2))
+          print("contrast OK")
+          PY
+
+  sandbox:
+    name: Install round trip (real Kate)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Kate
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends kate xdg-utils
+      - name: Install → apply → theme → backup → uninstall
+        run: bash tests/sandbox-install.sh

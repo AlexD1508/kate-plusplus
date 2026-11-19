@@ -1,0 +1,6 @@
+[Unit]
+Description=kate-plusplus: regenerate the Kate++ Caelestia editor theme
+
+[Service]
+Type=oneshot
+ExecStart=@BIN@ theme --quiet

@@ -1,0 +1,31 @@
+# Maintainer: AlexD1508 <https://github.com/AlexD1508>
+pkgname=kate-plusplus
+pkgver=1.0.0
+pkgrel=1
+pkgdesc="Notepad++ comfort for Kate: session memory, Notepad++ shortcuts and tools, harmonised themes"
+arch=('any')
+url="https://github.com/AlexD1508/kate-plusplus"
+license=('MIT')
+depends=('kate' 'python')
+optdepends=(
+  'caelestia-cli: wallpaper-driven theme and Super+J pop-up notepad'
+  'ttf-jetbrains-mono-nerd: recommended editor font'
+  'xdg-utils: make Kate the default text editor'
+)
+install=kate-plusplus.install
+source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+package() {
+  cd "$pkgname-$pkgver"
+  install -d "$pkgdir/usr/share/$pkgname"
+  cp -r bin lib config shortcuts kate-scripts hyprland desktop systemd assets "$pkgdir/usr/share/$pkgname/"
+  find "$pkgdir/usr/share/$pkgname" -name '*.png' -delete   # README images aren't needed at runtime
+  install -Dm755 /dev/stdin "$pkgdir/usr/bin/$pkgname" <<'SH'
+#!/bin/sh
+exec /usr/share/kate-plusplus/bin/kate-plusplus "$@"
+SH
+  install -Dm644 assets/icon.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/$pkgname.svg"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+}

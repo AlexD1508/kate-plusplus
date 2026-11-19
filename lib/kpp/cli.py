@@ -1,0 +1,798 @@
+"""kate-plusplus command line: install, apply, theme, backup, restore, doctor, update, uninstall."""
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import shutil
+import sys
+import tarfile
+import time
+from datetime import datetime
+from pathlib import Path
+
+from . import core, theme
+from .core import (APP, BACKUP_DIR, BIN_LINK, CAELESTIA_SCHEME, DIM, BOLD, RESET, ACCENT,
+                   GREEN, YELLOW, RED, KDEGLOBALS, REPO, STATE_DIR, USER_CONFIG, VERSION,
+                   XDG_CONFIG, XDG_DATA, banner, info, section, step, warn, fail, ask, have, run)
+
+SHORTCUT_COMPONENTS = ("kate", "katepart", "keyboardmacros")
+SCHEME = "Notepad++"
+SESSION = "Notepad"
+SCRATCH_SESSION = "Scratchpad"
+SCRATCH_ID = "kate-scratchpad"
+MIMES = [
+    "text/plain", "text/markdown", "text/x-markdown", "text/x-log", "application/json",
+    "application/x-yaml", "application/yaml", "application/toml", "application/xml", "text/xml",
+    "text/x-csrc", "text/x-chdr", "text/x-c++src", "text/x-python", "text/x-script.python",
+    "application/x-shellscript", "text/x-lua", "text/css", "text/javascript",
+    "application/javascript", "text/x-diff", "text/x-patch", "application/x-desktop",
+]
+THEME_NAMES = {"caelestia": "Kate++ Caelestia", "plasma": "Kate++ Plasma",
+               "dark": "Kate++ Dark", "light": "Kate++ Light"}
+SYSTEMD_DIR = XDG_CONFIG / "systemd/user"
+HYPR_FILE_LUA = core.KPP_CONFIG_DIR / "hyprland.lua"
+HYPR_FILE_CONF = core.KPP_CONFIG_DIR / "hyprland.conf"
+CAELESTIA_DIR = XDG_CONFIG / "caelestia"
+
+
+def entrypoint() -> str:
+    """The command systemd units and desktop files should call."""
+    if str(REPO).startswith("/usr/") and Path(f"/usr/bin/{APP}").exists():
+        return f"/usr/bin/{APP}"
+    return str(BIN_LINK)
+
+
+def need_kate() -> core.Kate:
+    kate = core.detect_kate()
+    if not kate:
+        fail("Kate isn't installed yet. Install it first, e.g.\n"
+             "      Arch / EndeavourOS:  sudo pacman -S kate\n"
+             "      Fedora:              sudo dnf install kate\n"
+             "      Debian / Ubuntu:     sudo apt install kate\n"
+             "      Any distro:          flatpak install flathub org.kde.kate")
+    return kate
+
+
+def resolve_profile(cfg) -> str:
+    p = cfg.get("general", "profile").lower()
+    if p in ("caelestia", "generic"):
+        return p
+    return "caelestia" if core.is_caelestia() else "generic"
+
+
+def resolve_theme_source(cfg, profile) -> str | None:
+    src = cfg.get("theme", "source").lower()
+    if src == "none":
+        return None
+    if src == "auto":
+        if profile == "caelestia" and CAELESTIA_SCHEME.is_file():
+            return "caelestia"
+        if core.is_plasma() and KDEGLOBALS.is_file() and theme.plasma_ui(KDEGLOBALS):
+            return "plasma"
+        return "dark" if core.system_prefers_dark() else "light"
+    if src == "caelestia" and not CAELESTIA_SCHEME.is_file():
+        warn("theme source 'caelestia' chosen but no Caelestia scheme found; using Kate++ Dark")
+        return "dark"
+    if src == "plasma" and not (KDEGLOBALS.is_file() and theme.plasma_ui(KDEGLOBALS)):
+        warn("theme source 'plasma' chosen but no KDE colours found; using Kate++ Dark")
+        return "dark"
+    if src not in THEME_NAMES:
+        warn(f"unknown theme source '{src}'; using auto")
+        return resolve_theme_source(core.Config(), profile)
+    return src
+
+
+def theme_path(kate, slug):
+    return kate.data / "org.kde.syntax-highlighting/themes" / f"{APP}-{slug}.theme"
+
+
+def build_themes(cfg, kate, source) -> str | None:
+    """Write the active theme (+ Kate++ Dark/Light so they're always selectable)."""
+    intensity = cfg.get("theme", "syntax-colors").lower()
+    if intensity not in theme.INTENSITY:
+        warn(f"syntax-colors '{intensity}' unknown; using balanced")
+        intensity = "balanced"
+    accent, background = cfg.get("theme", "accent"), cfg.get("theme", "background")
+    for name, val in (("accent", accent), ("background", background)):
+        if val:
+            try:
+                theme.norm(val)
+            except ValueError:
+                warn(f"{name} = {val} is not a hex colour like #7aa2f7; ignoring it")
+                if name == "accent":
+                    accent = ""
+                else:
+                    background = ""
+
+    for variant in ("dark", "light"):
+        ui = theme.static_ui(variant)
+        if source == variant:
+            ui = theme.apply_overrides(ui, accent, background)
+        theme.write_theme(theme_path(kate, variant),
+                          theme.build_theme(THEME_NAMES[variant], ui, intensity))
+    if source == "caelestia":
+        scheme = json.loads(CAELESTIA_SCHEME.read_text(encoding="utf-8"))
+        ui = theme.apply_overrides(theme.caelestia_ui(scheme["colours"]), accent, background)
+        theme.write_theme(theme_path(kate, "caelestia"),
+                          theme.build_theme(THEME_NAMES["caelestia"], ui, intensity))
+    elif source == "plasma":
+        ui = theme.apply_overrides(theme.plasma_ui(KDEGLOBALS), accent, background)
+        theme.write_theme(theme_path(kate, "plasma"),
+                          theme.build_theme(THEME_NAMES["plasma"], ui, intensity))
+    return THEME_NAMES.get(source) if source else None
+
+
+# ======================================================================= install / apply
+
+def install_files(kate):
+    for comp in SHORTCUT_COMPONENTS:
+        dst = kate.data / comp / "shortcuts" / SCHEME
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(REPO / "shortcuts" / comp / SCHEME, dst)
+    step("Notepad++ keyboard shortcuts")
+
+    dst = kate.data / "katepart5/script/commands/kate-plusplus.js"
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(REPO / "kate-scripts/kate-plusplus.js", dst)
+    step("Notepad++ tools  (JSON, Base64, URL, dates, line clean-up)")
+
+    icon = XDG_DATA / "icons/hicolor/scalable/apps/kate-plusplus.svg"
+    icon.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(REPO / "assets/icon.svg", icon)
+
+
+def ensure_sessions(kate):
+    sessions = kate.data / "kate/sessions"
+    sessions.mkdir(parents=True, exist_ok=True)
+    main = sessions / f"{SESSION}.katesession"
+    if not main.exists():
+        anon = kate.data / "kate/anonymous.katesession"
+        if anon.exists():
+            shutil.copyfile(anon, main)
+        else:
+            main.write_text("[Open Documents]\nCount=0\n", encoding="utf-8")
+    step(f"Memory: \"{SESSION}\" session with stash (no save prompts, tabs survive restarts)")
+
+
+def kate_settings(cfg, kate, theme_name):
+    settings = core.read_settings_ini(REPO / "config/kate.ini")
+    r = "[KTextEditor Renderer]"
+    font = cfg.get("editor", "font")
+    if font.lower() == "auto":
+        font = core.installed_font("JetBrainsMono Nerd Font", "JetBrains Mono", "JetBrainsMono NF") \
+            or "Monospace"
+    try:
+        size = max(6, min(40, int(float(cfg.get("editor", "font-size")))))
+        spacing = max(1.0, min(2.0, float(cfg.get("editor", "line-spacing"))))
+    except ValueError:
+        warn("font-size / line-spacing must be numbers; using 11 / 1.15")
+        size, spacing = 11, 1.15
+    settings += [
+        (r, "Text Font", f"{font},{size},-1,2,400,0,0,0,0,0,0,0,0,0,0,1"),
+        (r, "Line Height Multiplier", f"{spacing:g}"),
+        ("[KTextEditor View]", "Scroll Bar MiniMap", str(cfg.flag("editor", "minimap")).lower()),
+    ]
+    if theme_name:
+        settings += [(r, "Auto Color Theme Selection", "false"), (r, "Color Theme", theme_name)]
+    core.merge_rc(kate.katerc, settings)
+    step(f"Editor: {font} {size}pt · tabs, minimap, function list, macros, stash")
+
+
+def hotkey_modmask(hotkey):
+    bits = {"SUPER": 64, "WIN": 64, "MOD4": 64, "SHIFT": 1, "CTRL": 4, "CONTROL": 4, "ALT": 8}
+    parts = [p.strip().upper() for p in hotkey.split("+") if p.strip()]
+    return sum(bits.get(p, 0) for p in parts[:-1]), (parts[-1] if parts else "")
+
+
+def hotkey_taken(hotkey):
+    r = run("hyprctl", "binds", "-j")
+    if r.returncode != 0:
+        return None
+    mask, key = hotkey_modmask(hotkey)
+    try:
+        for b in json.loads(r.stdout):
+            if b.get("modmask") == mask and str(b.get("key", "")).upper() == key:
+                return b.get("description") or b.get("dispatcher") or "something else"
+    except ValueError:
+        return None
+    return None
+
+
+def setup_overlay(cfg, kate, state):
+    style = core.hyprland_style()
+    hotkey = cfg.get("features", "notepad-hotkey") or "SUPER + J"
+    if not style:
+        warn("Notepad overlay needs Hyprland; skipped")
+        return False
+    if state.get("overlay_hotkey") != hotkey:
+        taken = hotkey_taken(hotkey)
+        if taken:
+            warn(f"{hotkey} is already used ({taken}). Pick another key in {USER_CONFIG}"
+                 " (notepad-hotkey) and run `kate-plusplus apply`.")
+            return False
+
+    scratch_cmd = kate.cmd + ["-n", "-s", SCRATCH_SESSION, "--desktopfile", SCRATCH_ID]
+    # app definition for Caelestia's overlay toggle
+    cli_json = CAELESTIA_DIR / "cli.json"
+    data = json.loads(cli_json.read_text(encoding="utf-8")) if cli_json.exists() else {}
+    data.setdefault("toggles", {})["notepad"] = {
+        "kate": {"enable": True, "match": [{"class": SCRATCH_ID}], "command": scratch_cmd, "move": True}}
+    core.atomic_write(cli_json, json.dumps(data, indent=4, ensure_ascii=False) + "\n")
+
+    if style == "lua":
+        text = (REPO / "hyprland/kate-plusplus.lua").read_text(encoding="utf-8")
+        core.atomic_write(HYPR_FILE_LUA, text.replace("@HOTKEY@", hotkey))
+        core.set_block(CAELESTIA_DIR / "hypr-user.lua", "--",
+                       [f'pcall(dofile, os.getenv("HOME") .. "/.config/{APP}/hyprland.lua")'])
+    else:
+        mask, key = hotkey_modmask(hotkey)
+        mods = " ".join(p.strip().upper() for p in hotkey.split("+")[:-1])
+        text = (REPO / "hyprland/kate-plusplus.conf").read_text(encoding="utf-8")
+        core.atomic_write(HYPR_FILE_CONF, text.replace("@HOTKEY_CONF@", f"{mods}, {key}"))
+        core.set_block(CAELESTIA_DIR / "hypr-user.conf", "#", [f"source = ~/.config/{APP}/hyprland.conf"])
+
+    desktop = (REPO / "desktop/kate-scratchpad.desktop").read_text(encoding="utf-8")
+    core.atomic_write(XDG_DATA / f"applications/{SCRATCH_ID}.desktop",
+                      desktop.replace("@KATE@", " ".join(kate.cmd)))
+    if kate.kind == "native":
+        pin_main_session()
+    run("hyprctl", "reload")
+    state["overlay_hotkey"] = hotkey
+    step(f"Notepad overlay on {BOLD}{hotkey}{RESET}")
+    return True
+
+
+def pin_main_session():
+    """Local copy of Kate's launcher that always opens the Notepad session, so files you
+    open from the launcher / file manager never land in the hidden scratchpad."""
+    src = next((p for p in (Path("/usr/share/applications/org.kde.kate.desktop"),
+                            Path("/usr/local/share/applications/org.kde.kate.desktop")) if p.exists()), None)
+    if not src:
+        return
+    out = []
+    for line in src.read_text(encoding="utf-8").splitlines():
+        if line.startswith("Exec=kate") and " -s " not in line:
+            line = line.replace("Exec=kate", f"Exec=kate -s {SESSION}", 1)
+        out.append(line)
+    out.append("X-KatePlusPlus=true")
+    core.atomic_write(XDG_DATA / "applications/org.kde.kate.desktop", "\n".join(out) + "\n")
+
+
+def remove_overlay():
+    cli_json = CAELESTIA_DIR / "cli.json"
+    if cli_json.exists():
+        try:
+            data = json.loads(cli_json.read_text(encoding="utf-8"))
+            if data.get("toggles", {}).pop("notepad", None) is not None:
+                if not data["toggles"]:
+                    data.pop("toggles")
+                core.atomic_write(cli_json, json.dumps(data, indent=4, ensure_ascii=False) + "\n")
+        except ValueError:
+            warn(f"{cli_json} isn't valid JSON; remove the 'notepad' toggle by hand")
+    for f, prefix in ((CAELESTIA_DIR / "hypr-user.lua", "--"), (CAELESTIA_DIR / "hypr-user.conf", "#")):
+        if f.exists() and APP in f.read_text(encoding="utf-8"):
+            core.set_block(f, prefix, None)
+    for f in (HYPR_FILE_LUA, HYPR_FILE_CONF, XDG_DATA / f"applications/{SCRATCH_ID}.desktop"):
+        f.unlink(missing_ok=True)
+    own = XDG_DATA / "applications/org.kde.kate.desktop"
+    if own.exists() and "X-KatePlusPlus=true" in own.read_text(encoding="utf-8"):
+        own.unlink()
+    if have("hyprctl"):
+        run("hyprctl", "reload")
+
+
+MIMEAPPS = XDG_CONFIG / "mimeapps.list"
+DEFAULTS_GROUP = "[Default Applications]"
+KATE_DESKTOP = "org.kde.kate.desktop"
+
+
+def set_default_editor(state):
+    """Point the file types at Kate, remembering only what *you* had set explicitly."""
+    before = state.setdefault("mime_before", {})
+    for m in MIMES:
+        if m not in before:
+            before[m] = core.read_rc_value(MIMEAPPS, DEFAULTS_GROUP, m) or ""
+    core.merge_rc(MIMEAPPS, [(DEFAULTS_GROUP, m, KATE_DESKTOP) for m in MIMES], mode=0o644)
+    if have("update-desktop-database"):
+        run("update-desktop-database", str(XDG_DATA / "applications"))
+    step("Kate opens text, Markdown, JSON, YAML, logs and config files")
+
+
+def restore_default_editor(state):
+    before = state.pop("mime_before", None)
+    if not before or not MIMEAPPS.exists():
+        return
+    changes = []
+    for mime, app in before.items():
+        if core.read_rc_value(MIMEAPPS, DEFAULTS_GROUP, mime) == KATE_DESKTOP:
+            changes.append((DEFAULTS_GROUP, mime, app if app and app != KATE_DESKTOP else "@delete"))
+    core.merge_rc(MIMEAPPS, changes, mode=0o644)
+
+
+def install_unit(name, enable_unit):
+    text = (REPO / "systemd" / name).read_text(encoding="utf-8").replace("@BIN@", entrypoint())
+    core.atomic_write(SYSTEMD_DIR / name, text)
+    return enable_unit
+
+
+def setup_systemd(cfg, source):
+    if not core.has_systemd_user():
+        if cfg.flag("features", "backups"):
+            warn("No systemd user session: automatic backups are off (run `kate-plusplus backup` yourself)")
+        return
+    wanted = []
+    if cfg.flag("features", "backups"):
+        install_unit("kate-plusplus-backup.service", None)
+        wanted.append(install_unit("kate-plusplus-backup.timer", "kate-plusplus-backup.timer"))
+    watch = {"caelestia": CAELESTIA_SCHEME, "plasma": KDEGLOBALS}.get(source)
+    if watch:
+        install_unit("kate-plusplus-theme.service", None)
+        text = (REPO / "systemd/kate-plusplus-theme.path").read_text(encoding="utf-8")
+        text = text.replace("%h/.local/state/caelestia/scheme.json", str(watch))
+        core.atomic_write(SYSTEMD_DIR / "kate-plusplus-theme.path", text)
+        wanted.append("kate-plusplus-theme.path")
+    run("systemctl", "--user", "daemon-reload")
+    for unit in ("kate-plusplus-backup.timer", "kate-plusplus-theme.path"):
+        if unit not in wanted and (SYSTEMD_DIR / unit).exists():
+            run("systemctl", "--user", "disable", "--now", unit)
+            for f in SYSTEMD_DIR.glob(unit.rsplit(".", 1)[0] + ".*"):
+                f.unlink()
+    for unit in wanted:
+        run("systemctl", "--user", "enable", "--now", unit)
+    if cfg.flag("features", "backups"):
+        days = cfg.get("features", "backup-keep-days")
+        step(f"Safety snapshots every 10 min, kept {days} days")
+    if watch:
+        step("Theme follows your colours automatically")
+
+
+def remove_systemd():
+    if not have("systemctl"):
+        return
+    for unit in ("kate-plusplus-backup.timer", "kate-plusplus-theme.path"):
+        run("systemctl", "--user", "disable", "--now", unit)
+    for f in SYSTEMD_DIR.glob("kate-plusplus-*"):
+        f.unlink()
+    run("systemctl", "--user", "daemon-reload")
+
+
+def link_cli():
+    if str(REPO).startswith("/usr/"):
+        return
+    BIN_LINK.parent.mkdir(parents=True, exist_ok=True)
+    target = REPO / "bin" / APP
+    if BIN_LINK.is_symlink() or BIN_LINK.exists():
+        if BIN_LINK.resolve() == target.resolve():
+            return
+        BIN_LINK.unlink()
+    BIN_LINK.symlink_to(target)
+    if str(BIN_LINK.parent) not in os.environ.get("PATH", "").split(":"):
+        warn(f"{BIN_LINK.parent} isn't on your PATH; add it to use the `{APP}` command")
+
+
+def do_apply(args, first_install=False):
+    kate = need_kate()
+    state = core.load_state()
+    created = core.ensure_user_config()
+    cfg = core.load_config()
+    profile = resolve_profile(cfg)
+
+    if not core.QUIET:
+        flavour = "Caelestia · Hyprland" if profile == "caelestia" else "Generic Linux"
+        banner(f"{'Installing' if first_install else 'Applying'} · {flavour} · Kate {kate.version} ({kate.kind})")
+
+    if first_install and not args.yes:
+        print("  This sets Kate up like Notepad++ and backs up your current Kate settings first.")
+        print(f"  {DIM}Options live in {USER_CONFIG}{RESET}\n")
+        if not ask("Continue?"):
+            fail("Nothing changed.", 0)
+
+    core.wait_for_kate_closed(kate)
+
+    section("Safety first")
+    pre = STATE_DIR / "katerc.before-kate-plusplus"
+    if kate.katerc.exists() and not pre.exists():
+        pre.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(kate.katerc, pre)
+        step(f"Original Kate settings saved  {DIM}{pre}{RESET}")
+    snap = make_backup(kate, force=True, label="pre-apply")
+    if snap:
+        step(f"Snapshot of sessions & tabs   {DIM}{snap.name}{RESET}")
+    elif not kate.katerc.exists():
+        step("Fresh Kate: nothing to back up yet")
+
+    section("Kate")
+    install_files(kate)
+    ensure_sessions(kate)
+    source = resolve_theme_source(cfg, profile)
+    theme_name = build_themes(cfg, kate, source)
+    kate_settings(cfg, kate, theme_name)
+    if theme_name:
+        step(f"Theme: {theme_name}  {DIM}({cfg.get('theme', 'syntax-colors')} syntax colours){RESET}")
+
+    section("System")
+    overlay = False
+    if profile == "caelestia" and cfg.flag("features", "notepad-overlay"):
+        overlay = setup_overlay(cfg, kate, state)
+    if not overlay and state.get("overlay_hotkey"):
+        remove_overlay()
+        state.pop("overlay_hotkey", None)
+        info("Notepad overlay removed")
+    if cfg.flag("features", "default-editor"):
+        set_default_editor(state)
+    elif "mime_before" in state:
+        restore_default_editor(state)
+        info("Default-editor associations restored")
+    setup_systemd(cfg, source)
+    link_cli()
+
+    state.update({"version": VERSION, "profile": profile, "kate": kate.kind,
+                  "theme_source": source, "repo": str(REPO), "applied": datetime.now().isoformat(timespec="seconds")})
+    core.save_state(state)
+
+    if not core.QUIET:
+        print(f"\n  {GREEN}{BOLD}Done!{RESET} Open Kate and it's straight back in your tabs.\n")
+        if first_install or created:
+            print(f"  {BOLD}Try it{RESET}")
+            if overlay:
+                print(f"    {ACCENT}{cfg.get('features', 'notepad-hotkey'):<16}{RESET} pop-up notepad")
+            for k, v in (("Ctrl+D", "duplicate line"), ("Ctrl+H", "find & replace"),
+                         ("Ctrl+Shift+R / P", "record / play macro"),
+                         ("Ctrl+Alt+I", "command bar: type a tool name, e.g. \"Format JSON\""),
+                         ("Ctrl+Alt+Shift+M", "format JSON")):
+                print(f"    {ACCENT}{k:<16}{RESET} {v}")
+            print(f"\n  {DIM}Tweak anything: {APP} config   ·   Health check: {APP} doctor{RESET}\n")
+
+
+# ======================================================================= theme
+
+def do_theme(args):
+    kate = need_kate()
+    cfg = core.load_config()
+    profile = resolve_profile(cfg)
+    source = resolve_theme_source(cfg, profile)
+    name = build_themes(cfg, kate, source)
+    if not name:
+        core.info("Theme source is 'none'; Kate's own colours are left alone")
+        return
+    step(f"{name} regenerated")
+    current = core.read_rc_value(kate.katerc, "[KTextEditor Renderer]", "Color Theme")
+    if current != name:
+        if core.kate_running(kate):
+            info(f"Restart Kate (or pick {name} in Settings → Configure Kate → Color Themes)")
+        else:
+            core.merge_rc(kate.katerc, [("[KTextEditor Renderer]", "Auto Color Theme Selection", "false"),
+                                        ("[KTextEditor Renderer]", "Color Theme", name)])
+
+
+# ======================================================================= backups
+
+def _backup_sources(kate):
+    return [p for p in (kate.katerc, kate.config / "katemetainfos", kate.data / "kate") if p.exists()]
+
+
+def _fingerprint(paths):
+    h = hashlib.sha256()
+    for root in paths:
+        files = [root] if root.is_file() else sorted(p for p in root.rglob("*") if p.is_file())
+        for f in files:
+            h.update(str(f).encode())
+            try:
+                h.update(f.read_bytes())
+            except OSError:
+                pass
+    return h.hexdigest()
+
+
+def make_backup(kate, force=False, label="auto"):
+    paths = _backup_sources(kate)
+    if not paths:
+        return None
+    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+    fp = _fingerprint(paths)
+    last = BACKUP_DIR / ".last-fingerprint"
+    if not force and last.exists() and last.read_text().strip() == fp:
+        return None
+    name = BACKUP_DIR / f"kate-{datetime.now():%Y%m%d-%H%M%S}-{label}.tar.gz"
+    with tarfile.open(name, "w:gz") as tar:
+        for p in paths:
+            tar.add(p, arcname=str(p.relative_to(core.HOME)))
+    last.write_text(fp)
+    return name
+
+
+def list_backups():
+    return sorted(BACKUP_DIR.glob("kate-*.tar.gz"), reverse=True)
+
+
+def prune_backups(days):
+    snaps = list_backups()
+    cutoff = time.time() - days * 86400
+    for old in snaps[10:]:  # always keep the newest 10
+        if old.stat().st_mtime < cutoff:
+            old.unlink()
+
+
+def do_backup(args):
+    kate = need_kate()
+    cfg = core.load_config()
+    snap = make_backup(kate, force=not args.quiet, label="auto" if args.quiet else "manual")
+    try:
+        days = float(cfg.get("features", "backup-keep-days"))
+    except ValueError:
+        days = 2
+    prune_backups(days)
+    if snap:
+        step(f"Snapshot saved  {DIM}{snap}{RESET}")
+    else:
+        info("Nothing changed since the last snapshot")
+
+
+def _human(ts):
+    delta = time.time() - ts
+    if delta < 90:
+        return "just now"
+    if delta < 3600:
+        return f"{int(delta // 60)} min ago"
+    if delta < 86400:
+        return f"{int(delta // 3600)} h ago"
+    return f"{int(delta // 86400)} days ago"
+
+
+def do_restore(args):
+    kate = need_kate()
+    snaps = list_backups()
+    if not snaps:
+        fail(f"No snapshots yet in {BACKUP_DIR}")
+    banner("Restore a snapshot of your Kate sessions and unsaved tabs")
+    choice = args.snapshot
+    if not choice:
+        for i, s in enumerate(snaps[:15], 1):
+            st = s.stat()
+            print(f"   {ACCENT}{i:>2}{RESET}  {datetime.fromtimestamp(st.st_mtime):%a %d %b %H:%M}"
+                  f"  {DIM}{_human(st.st_mtime):>12} · {st.st_size // 1024} KB{RESET}")
+        choice = core.prompt("\n  Which one? (number, Enter = cancel)")
+        if not choice:
+            fail("Cancelled.", 0)
+    try:
+        snap = snaps[int(choice) - 1] if choice.isdigit() else Path(choice)
+    except IndexError:
+        fail("No snapshot with that number")
+    if not snap.exists():
+        fail(f"{snap} not found")
+    core.wait_for_kate_closed(kate, "restore your tabs")
+    safety = make_backup(kate, force=True, label="before-restore")
+    shutil.rmtree(kate.data / "kate", ignore_errors=True)
+    with tarfile.open(snap) as tar:
+        tar.extractall(core.HOME, filter="data") if hasattr(tarfile, "data_filter") else tar.extractall(core.HOME)
+    step(f"Restored {snap.name}")
+    if safety:
+        info(f"What you had before is in {safety.name} (restore it the same way)")
+
+
+# ======================================================================= doctor
+
+def do_doctor(args):
+    banner("Health check")
+    ok = lambda m: print(f"  {GREEN}✓{RESET} {m}")       # noqa: E731
+    bad = lambda m: print(f"  {RED}✗{RESET} {m}")        # noqa: E731
+    meh = lambda m: print(f"  {YELLOW}!{RESET} {m}")     # noqa: E731
+    kate = core.detect_kate()
+    state = core.load_state()
+    cfg = core.load_config()
+    print(f"  {DIM}Kate++ {VERSION} · {sys.platform} · Python {sys.version.split()[0]} · "
+          f"{os.environ.get('XDG_CURRENT_DESKTOP', '?')} · {os.environ.get('XDG_SESSION_TYPE', '?')}{RESET}\n")
+    if not kate:
+        bad("Kate is not installed")
+        return 1
+    ok(f"Kate {kate.version} ({kate.kind})")
+    (ok if state else bad)(f"Installed: {state.get('version', 'no')}  profile {state.get('profile', '-')}")
+    (ok if USER_CONFIG.exists() else meh)(f"Config: {USER_CONFIG}")
+    scheme = core.read_rc_value(kate.katerc, "[Shortcut Schemes]", "Current Scheme")
+    (ok if scheme == SCHEME else meh)(f"Shortcut scheme: {scheme or 'Default'}")
+    (ok if (kate.data / "katepart5/script/commands/kate-plusplus.js").exists() else bad)("Notepad++ tools script")
+    stash = core.read_rc_value(kate.katerc, "[General]", "Stash unsaved file changes") == "true"
+    (ok if stash else bad)("Stash (no save prompts, tabs survive restarts)")
+    t = core.read_rc_value(kate.katerc, "[KTextEditor Renderer]", "Color Theme")
+    src = state.get("theme_source")
+    if src:
+        f = theme_path(kate, src)
+        (ok if f.exists() else bad)(f"Theme {t}  {DIM}({f.name}){RESET}")
+    else:
+        meh("Theme: Kate's own (source = none)")
+    if state.get("profile") == "caelestia":
+        if have("caelestia"):
+            ok("Caelestia CLI")
+        qt = os.environ.get("QT_QPA_PLATFORMTHEME", "")
+        plugin_dirs = [Path("/usr/lib/qt6/plugins/platformthemes"), Path("/usr/lib64/qt6/plugins/platformthemes")]
+        has_engine = qt != "qtengine" or any(
+            any(d.glob("*qtengine*")) or any(d.glob("libqt6engine*")) for d in plugin_dirs if d.exists())
+        (ok if has_engine else bad)(f"Qt platform theme '{qt or '-'}'"
+                                    + ("" if has_engine else " is set but not installed (yay -S qtengine)"))
+        if state.get("overlay_hotkey"):
+            bound = hotkey_taken(state["overlay_hotkey"])
+            (ok if bound else meh)(f"Notepad overlay {state['overlay_hotkey']}"
+                                   + ("" if bound else " (not bound yet; reload Hyprland)"))
+    if core.has_systemd_user():
+        for unit, want in (("kate-plusplus-backup.timer", cfg.flag("features", "backups")),
+                           ("kate-plusplus-theme.path", src in ("caelestia", "plasma"))):
+            active = run("systemctl", "--user", "is-active", unit).stdout.strip() == "active"
+            if want:
+                (ok if active else bad)(f"{unit} {'running' if active else 'not running'}")
+    snaps = list_backups()
+    if snaps:
+        ok(f"{len(snaps)} snapshots, newest {_human(snaps[0].stat().st_mtime)}")
+    elif cfg.flag("features", "backups"):
+        meh("No snapshots yet")
+    if have("xdg-mime"):
+        d = (run("xdg-mime", "query", "default", "text/plain").stdout or "").strip()
+        (ok if d == "org.kde.kate.desktop" or not cfg.flag("features", "default-editor") else meh)(
+            f"text/plain opens with {d or 'nothing set'}")
+    print()
+    return 0
+
+
+# ======================================================================= update / uninstall / config
+
+def do_update(args):
+    if str(REPO).startswith("/usr/"):
+        info("Installed from a package: update it with your package manager (e.g. yay -Syu),")
+        info("then run `kate-plusplus apply`.")
+        return
+    if not (REPO / ".git").exists():
+        fail(f"{REPO} isn't a git checkout; reinstall with the one-line installer")
+    banner("Update")
+    before = run("git", "-C", str(REPO), "rev-parse", "HEAD").stdout.strip()
+    r = run("git", "-C", str(REPO), "pull", "--ff-only", "--quiet")
+    if r.returncode != 0:
+        fail(f"git pull failed:\n{r.stderr}")
+    after = run("git", "-C", str(REPO), "rev-parse", "HEAD").stdout.strip()
+    if before == after:
+        step("Already up to date")
+        return
+    step("Downloaded the latest Kate++")
+    os.execv(sys.executable, [sys.executable, str(REPO / "bin" / APP), "apply", "--yes"])
+
+
+def do_uninstall(args):
+    kate = need_kate()
+    banner("Uninstall")
+    if not args.yes and not ask("Remove Kate++ from this account? Your notes and tabs stay."):
+        fail("Nothing changed.", 0)
+    core.wait_for_kate_closed(kate)
+    state = core.load_state()
+    snap = make_backup(kate, force=True, label="before-uninstall")
+    remove_overlay()
+    remove_systemd()
+    restore_default_editor(state)
+    for comp in SHORTCUT_COMPONENTS:
+        (kate.data / comp / "shortcuts" / SCHEME).unlink(missing_ok=True)
+    (kate.data / "katepart5/script/commands/kate-plusplus.js").unlink(missing_ok=True)
+    for f in (kate.data / "org.kde.syntax-highlighting/themes").glob(f"{APP}-*.theme"):
+        f.unlink()
+    (XDG_DATA / "icons/hicolor/scalable/apps/kate-plusplus.svg").unlink(missing_ok=True)
+    pre = STATE_DIR / "katerc.before-kate-plusplus"
+    if pre.exists() and (args.yes or ask("Put your Kate settings back to how they were before Kate++?")):
+        shutil.copy2(pre, kate.katerc)
+        step("Original Kate settings restored")
+    else:  # fresh Kate before Kate++: take back every key we set
+        ours = core.read_settings_ini(REPO / "config/kate.ini")
+        r = "[KTextEditor Renderer]"
+        extra = [(r, "Text Font"), (r, "Line Height Multiplier"), (r, "Color Theme"),
+                 (r, "Auto Color Theme Selection"), ("[KTextEditor View]", "Scroll Bar MiniMap")]
+        core.merge_rc(kate.katerc, [(g, k, "@delete") for g, k, _ in ours] + [(g, k, "@delete") for g, k in extra])
+    shutil.rmtree(STATE_DIR, ignore_errors=True)
+    if BIN_LINK.is_symlink():
+        BIN_LINK.unlink()
+    step("Kate++ removed")
+    info(f"Kept: your sessions & tabs, {USER_CONFIG.parent} and snapshots in {BACKUP_DIR}")
+    if snap:
+        info(f"Last snapshot: {snap.name}")
+
+
+def do_config(args):
+    core.ensure_user_config()
+    if args.print:
+        print(USER_CONFIG.read_text(encoding="utf-8"))
+        return
+    editor = os.environ.get("VISUAL") or os.environ.get("EDITOR")
+    kate = core.detect_kate()
+    if editor:
+        os.system(f'{editor} "{USER_CONFIG}"')
+    elif kate:
+        run(*kate.cmd, "-n", "--startanon", "-b", str(USER_CONFIG), quiet=True)
+    else:
+        print(USER_CONFIG)
+        return
+    if ask("Apply the changes now?"):
+        args.yes = True
+        do_apply(args)
+
+
+# ======================================================================= menu
+
+def do_menu(args):
+    state = core.load_state()
+    banner("Notepad++ comfort for Kate")
+    if not state:
+        print("  Not installed yet on this account.\n")
+        if ask("Install now?"):
+            args.yes = True
+            do_apply(args, first_install=True)
+        return
+    print(f"  {DIM}profile{RESET} {state.get('profile')}   {DIM}theme{RESET} "
+          f"{THEME_NAMES.get(state.get('theme_source') or '', 'Kate default')}   "
+          f"{DIM}overlay{RESET} {state.get('overlay_hotkey') or 'off'}\n")
+    items = [("Apply settings", "re-apply config.ini", do_apply),
+             ("Edit settings", "open config.ini", do_config),
+             ("Regenerate theme", "after changing colours", do_theme),
+             ("Snapshot now", "back up sessions & unsaved tabs", do_backup),
+             ("Restore a snapshot", "bring back older tabs", do_restore),
+             ("Health check", "find problems", do_doctor),
+             ("Update", "get the latest Kate++", do_update),
+             ("Uninstall", "remove Kate++, keep your notes", do_uninstall)]
+    for i, (name, hint, _) in enumerate(items, 1):
+        print(f"   {ACCENT}{i}{RESET}  {name:<20} {DIM}{hint}{RESET}")
+    choice = core.prompt("\n  Choose (Enter = quit)")
+    if not choice.isdigit() or not 1 <= int(choice) <= len(items):
+        return
+    args.yes, args.quiet, args.snapshot, args.print = False, False, None, False
+    fn = items[int(choice) - 1][2]
+    fn(args)
+
+
+# ======================================================================= entry
+
+def main(argv=None):
+    p = argparse.ArgumentParser(prog=APP, description="Kate++ — Notepad++ comfort for Kate.")
+    p.add_argument("--version", action="version", version=f"Kate++ {VERSION}")
+    sub = p.add_subparsers(dest="cmd")
+    for name, help_ in (("install", "first-time setup"), ("apply", "re-apply config.ini")):
+        s = sub.add_parser(name, help=help_)
+        s.add_argument("-y", "--yes", action="store_true", help="don't ask questions")
+        s.add_argument("--profile", choices=("auto", "caelestia", "generic"))
+        s.add_argument("--hotkey", help='notepad overlay key, e.g. "SUPER + J"')
+        s.add_argument("--no-overlay", action="store_true")
+        s.add_argument("--no-default-editor", action="store_true")
+        s.add_argument("--no-backups", action="store_true")
+    sub.add_parser("theme", help="regenerate the editor theme").add_argument("--quiet", action="store_true")
+    sub.add_parser("backup", help="snapshot sessions & unsaved tabs").add_argument("--quiet", action="store_true")
+    sub.add_parser("restore", help="restore a snapshot").add_argument("snapshot", nargs="?")
+    sub.add_parser("doctor", help="health check")
+    sub.add_parser("update", help="update Kate++")
+    sub.add_parser("uninstall", help="remove Kate++").add_argument("-y", "--yes", action="store_true")
+    sub.add_parser("config", help="edit config.ini").add_argument("--print", action="store_true")
+    args = p.parse_args(argv)
+
+    if getattr(args, "quiet", False):
+        core.QUIET = True
+    for attr in ("yes", "quiet", "snapshot", "print"):
+        if not hasattr(args, attr):
+            setattr(args, attr, False if attr != "snapshot" else None)
+
+    if args.cmd in ("install", "apply"):
+        overrides = {}
+        if args.profile:
+            overrides[("general", "profile")] = args.profile
+        if args.hotkey:
+            overrides[("features", "notepad-hotkey")] = args.hotkey
+        if args.no_overlay:
+            overrides[("features", "notepad-overlay")] = "false"
+        if args.no_default_editor:
+            overrides[("features", "default-editor")] = "false"
+        if args.no_backups:
+            overrides[("features", "backups")] = "false"
+        if overrides:
+            core.ensure_user_config(overrides)
+        first = args.cmd == "install" and not core.load_state()
+        return do_apply(args, first_install=first)
+
+    handlers = {"theme": do_theme, "backup": do_backup, "restore": do_restore, "doctor": do_doctor,
+                "update": do_update, "uninstall": do_uninstall, "config": do_config}
+    if args.cmd in handlers:
+        return handlers[args.cmd](args)
+    if sys.stdin.isatty() or Path("/dev/tty").exists():
+        return do_menu(args)
+    p.print_help()

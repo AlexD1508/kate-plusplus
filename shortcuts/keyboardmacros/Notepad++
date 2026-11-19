@@ -1,0 +1,7 @@
+<!DOCTYPE gui>
+<gui name="keyboardmacros" version="1">
+ <ActionProperties scheme="Notepad++">
+  <Action name="keyboardmacros_record" shortcut="Ctrl+Shift+R"/>
+  <Action name="keyboardmacros_play" shortcut="Ctrl+Shift+P"/>
+ </ActionProperties>
+</gui>

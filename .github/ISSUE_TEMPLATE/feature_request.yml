@@ -1,0 +1,22 @@
+name: ✨ Feature idea
+description: A Notepad++ habit you miss, or something that would make Kate++ nicer.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like?
+      placeholder: "In Notepad++ I can … and I miss it in Kate."
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why does it matter to you?
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Fits Kate++?
+      options:
+        - label: It can be done by configuring Kate (Kate++ never patches Kate itself)
+        - label: I'd be happy to help build or test it

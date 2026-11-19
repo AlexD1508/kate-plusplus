@@ -1,0 +1,9 @@
+[Unit]
+Description=kate-plusplus: watch the Caelestia colour scheme
+
+[Path]
+PathChanged=%h/.local/state/caelestia/scheme.json
+Unit=kate-plusplus-theme.service
+
+[Install]
+WantedBy=default.target

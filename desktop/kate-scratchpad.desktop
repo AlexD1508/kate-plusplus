@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Kate Notepad
+GenericName=Scratchpad
+Comment=Always-there Kate scratchpad (kate-plusplus)
+Icon=kate-plusplus
+Exec=@KATE@ -n -s Scratchpad --desktopfile kate-scratchpad
+StartupWMClass=kate-scratchpad
+Categories=Utility;TextEditor;
+NoDisplay=true

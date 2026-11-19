@@ -1,0 +1,13 @@
+<!DOCTYPE gui>
+<gui name="katepart" version="1">
+ <ActionProperties scheme="Notepad++">
+  <Action name="edit_replace" shortcut="Ctrl+H; Ctrl+R"/>
+  <Action name="tools_scripts_duplicateLinesDown" shortcut="Ctrl+D; Ctrl+Alt+Down"/>
+  <Action name="tools_comment" shortcut="Ctrl+K"/>
+  <Action name="tools_uncomment" shortcut="Ctrl+Shift+K"/>
+  <Action name="tools_toggle_comment" shortcut="Ctrl+Q; Ctrl+/"/>
+  <Action name="delete_line" shortcut="Ctrl+Shift+L"/>
+  <Action name="tools_lowercase" shortcut="Ctrl+U"/>
+  <Action name="tools_uppercase" shortcut="Ctrl+Shift+U"/>
+ </ActionProperties>
+</gui>
