@@ -841,10 +841,13 @@ def do_doctor(args):
         meh("Theme: Kate's own (source = none)")
     ws = state.get("window_scheme")
     cur = core.read_rc_value(kate.katerc, "[UiSettings]", "ColorScheme")
-    if ws and ws.startswith(window.PREFIX):
-        (ok if cur == ws else meh)(f"Window colours match the theme {DIM}({ws}){RESET}")
+    if cur and cur == ws:
+        ok(f"Window colours match the theme {DIM}({ws}){RESET}")
+    elif cur and not cur.startswith(window.PREFIX):
+        ok(f"Window colours: '{cur}', your own choice in Kate "
+           f"{DIM}(choose Default there to let Kate++ match the theme){RESET}")
     elif cur:
-        ok(f"Window colours: '{cur}' (your choice in Kate)")
+        meh(f"Window colours: '{cur}' is an old Kate++ scheme → kate-plusplus apply")
     else:
         ok("Window colours follow your desktop")
     if state.get("profile") == "caelestia":
