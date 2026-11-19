@@ -350,6 +350,11 @@ def restore_katerc(kate, state) -> bool:
     return True
 
 
+# config/kate.ini keys that versions without per-key records never wrote: the record-less
+# fallback must not delete them (a user may have set them), it puts back their records instead
+NEWER_KATE_INI_KEYS = {("[Kate Plugins]", "katesnippetsplugin")}
+
+
 def remove_managed_katerc(kate, state=None):
     """Fallback without complete records or a backup: remove the settings older versions
     managed (their originals are unknown), and put back exactly the recorded originals of
@@ -358,7 +363,7 @@ def remove_managed_katerc(kate, state=None):
     no-ligatures value (a later own value stays), and the snippet repository entry is taken
     out by remove_snippets() (list surgery keeps repositories added since)."""
     r = "[KTextEditor Renderer]"
-    legacy = managed_keys()
+    legacy = [gk for gk in managed_keys() if gk not in NEWER_KATE_INI_KEYS]
     changes = [(g, k, "@delete") for g, k in legacy]
     special = {f"{r}\tText Font Features", f"{SNIPPETS_GROUP}\t{SNIPPETS_KEY}"}
     old_keys = {f"{g}\t{k}" for g, k in legacy} | {f"{UI}\tColorScheme"} | special  # scheme: see do_uninstall
@@ -1194,6 +1199,9 @@ def do_uninstall(args):
         f.unlink()
     (XDG_DATA / "icons/hicolor/scalable/apps/kate-plusplus.svg").unlink(missing_ok=True)
     window.remove_schemes(kate)
+    # the snippet list as it is now (with repositories enabled since install): restoring
+    # settings must not roll it back; remove_snippets() then takes out only Kate++'s entry
+    repos_now = core.read_rc_value(kate.katerc, SNIPPETS_GROUP, SNIPPETS_KEY)
     if PRE_INSTALL.exists() and (args.yes or ask("Put your Kate settings back to how they were before Kate++?")):
         shutil.copy2(PRE_INSTALL, kate.katerc)
         step("Original Kate settings restored")
@@ -1205,6 +1213,7 @@ def do_uninstall(args):
         if scheme and scheme.startswith(window.PREFIX):   # its file is gone; a manual pick stays
             core.merge_rc(kate.katerc, [("[UiSettings]", "ColorScheme", "@delete")])
         step("Kate++ settings removed (no record of your earlier values was available)")
+    core.merge_rc(kate.katerc, [(SNIPPETS_GROUP, SNIPPETS_KEY, "@delete" if repos_now is None else repos_now)])
     remove_snippets(kate, state)   # after any katerc restore, so a restored file can't re-enable it
     shutil.rmtree(STATE_DIR, ignore_errors=True)
     if BIN_LINK.is_symlink():

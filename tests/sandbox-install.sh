@@ -301,6 +301,28 @@ run install --yes
 run uninstall --yes
 [[ -e $H/.local/share/ktexteditor_snippets ]] && die "uninstall left the empty snippet folders Kate++ created"
 
+# snippet repositories enabled after install survive uninstall (full backup restore too)
+H=$root/snipadded; mkdir -p "$H/.config"
+printf '[Snippets]\nenabledRepositories=/home/me/a.xml\n' > "$H/.config/katerc"
+run install --yes
+sed -i 's#^enabledRepositories=\(.*\)$#enabledRepositories=\1,/home/me/b.xml#' "$H/.config/katerc"
+run uninstall --yes
+grep -q '^enabledRepositories=/home/me/a.xml,/home/me/b.xml$' "$H/.config/katerc" \
+    || die "uninstall lost a snippet repository enabled after install: $(grep enabledRepositories "$H/.config/katerc")"
+
+# fallback uninstall puts back the user's own snippets-plugin setting instead of deleting it
+H=$root/snipplugin; mkdir -p "$H/.config"
+printf '[Kate Plugins]\nkatesnippetsplugin=false\n' > "$H/.config/katerc"
+run install --yes
+grep -q '^katesnippetsplugin=true' "$H/.config/katerc" || die "snippets plugin not enabled"
+python3 - "$H/.local/state/kate-plusplus/state.json" <<'PY'
+import json, sys
+p = sys.argv[1]; s = json.load(open(p)); s["katerc_complete"] = False; json.dump(s, open(p, "w"))
+PY
+rm -f "$H/.local/state/kate-plusplus/katerc.before-kate-plusplus"
+run uninstall --yes
+grep -q '^katesnippetsplugin=false$' "$H/.config/katerc" || die "fallback uninstall lost the user's snippets-plugin setting"
+
 # fresh Kate (no katerc) → install → apply → uninstall: no reference to the removed snippet pack
 H=$root/snipfresh; mkdir -p "$H"
 run install --yes
