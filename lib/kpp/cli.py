@@ -139,11 +139,12 @@ def theme_path(kate, slug):
     return kate.data / "org.kde.syntax-highlighting/themes" / f"{APP}-{slug}.theme"
 
 
-def build_themes(cfg, kate, source) -> str | None:
-    """Write the active theme (+ Kate++ Dark/Light so they're always selectable)."""
+def theme_options(cfg, quiet=False):
+    """Validated (accent, background, intensity) from config.ini."""
     intensity = cfg.get("theme", "syntax-colors").lower()
     if intensity not in theme.INTENSITY:
-        warn(f"syntax-colors '{intensity}' unknown; using balanced")
+        if not quiet:
+            warn(f"syntax-colors '{intensity}' unknown; using balanced")
         intensity = "balanced"
     accent, background = cfg.get("theme", "accent"), cfg.get("theme", "background")
     for name, val in (("accent", accent), ("background", background)):
@@ -151,29 +152,39 @@ def build_themes(cfg, kate, source) -> str | None:
             try:
                 theme.norm(val)
             except ValueError:
-                warn(f"{name} = {val} is not a hex colour like #7aa2f7; ignoring it")
+                if not quiet:
+                    warn(f"{name} = {val} is not a hex colour like #7aa2f7; ignoring it")
                 if name == "accent":
                     accent = ""
                 else:
                     background = ""
+    return accent, background, intensity
 
+
+def adaptive_theme(source, accent, background, intensity):
+    """Theme dict for a resolved Kate++ adaptive source (caelestia/plasma/dark/light)."""
+    if source in ("dark", "light"):
+        ui = theme.static_ui(source)
+    elif source == "caelestia":
+        ui = theme.caelestia_ui(json.loads(CAELESTIA_SCHEME.read_text(encoding="utf-8"))["colours"])
+    elif source == "plasma":
+        ui = theme.plasma_ui(KDEGLOBALS)
+    else:
+        return None
+    return theme.build_theme(THEME_NAMES[source], theme.apply_overrides(ui, accent, background), intensity)
+
+
+def build_themes(cfg, kate, source) -> str | None:
+    """Write the active theme (+ Kate++ Dark/Light so they're always selectable)."""
+    accent, background, intensity = theme_options(cfg)
     for slug in ports.PORTS:
         theme.write_theme(theme_path(kate, slug), ports.build(slug))
     for variant in ("dark", "light"):
-        ui = theme.static_ui(variant)
-        if source == variant:
-            ui = theme.apply_overrides(ui, accent, background)
+        own = source == variant
         theme.write_theme(theme_path(kate, variant),
-                          theme.build_theme(THEME_NAMES[variant], ui, intensity))
-    if source == "caelestia":
-        scheme = json.loads(CAELESTIA_SCHEME.read_text(encoding="utf-8"))
-        ui = theme.apply_overrides(theme.caelestia_ui(scheme["colours"]), accent, background)
-        theme.write_theme(theme_path(kate, "caelestia"),
-                          theme.build_theme(THEME_NAMES["caelestia"], ui, intensity))
-    elif source == "plasma":
-        ui = theme.apply_overrides(theme.plasma_ui(KDEGLOBALS), accent, background)
-        theme.write_theme(theme_path(kate, "plasma"),
-                          theme.build_theme(THEME_NAMES["plasma"], ui, intensity))
+                          adaptive_theme(variant, accent if own else "", background if own else "", intensity))
+    if source in ("caelestia", "plasma"):
+        theme.write_theme(theme_path(kate, source), adaptive_theme(source, accent, background, intensity))
     return theme_display_name(source)
 
 
@@ -616,6 +627,18 @@ def do_pick_theme(args):
     step(f"Theme set to {chosen.label}  {DIM}(source = {chosen.source}){RESET}")
     args.pick = False
     do_theme(args)
+    # keep the colour watcher in step with the new source (Caelestia/Plasma follow live changes)
+    cfg = core.load_config()
+    source = resolve_theme_source(cfg, resolve_profile(cfg))
+    quiet, core.QUIET = core.QUIET, True
+    try:
+        setup_systemd(cfg, source)
+    finally:
+        core.QUIET = quiet
+    state = core.load_state()
+    if state:
+        state["theme_source"] = source
+        core.save_state(state)
 
 
 def do_theme(args):

@@ -5,7 +5,6 @@ Pure stdlib (termios/tty); falls back to a numbered list when there's no termina
 """
 from __future__ import annotations
 
-import json
 import os
 import select
 import subprocess
@@ -14,7 +13,7 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import core, ports, theme
+from . import core, ports
 
 # A short Python sample, pre-split into (text, KSyntaxHighlighting style) segments so the
 # preview needs no highlighter for Kate++'s own themes.
@@ -74,23 +73,32 @@ def _bg(h):
     return f"\033[48;2;{int(h[0:2], 16)};{int(h[2:4], 16)};{int(h[4:6], 16)}m"
 
 
-def theme_dict(entry: Entry):
-    """KSyntaxHighlighting theme dict for Kate++ and ported themes, or None for Kate's own."""
+def theme_dict(entry: Entry, cfg=None):
+    """Theme dict exactly as `apply` would build it (adaptive themes honour config overrides),
+    or None for Kate's own themes."""
+    from . import cli   # cli is fully loaded by the time the picker runs
     if entry.group == "Popular":
         slug = "rose-pine" if entry.source == "rose-pine-main" else entry.source
         return ports.build(slug)
-    if entry.source in ("dark", "light"):
-        return theme.build_theme(entry.label, theme.static_ui(entry.source))
-    if entry.source == "caelestia" and core.CAELESTIA_SCHEME.is_file():
-        colours = json.loads(core.CAELESTIA_SCHEME.read_text(encoding="utf-8"))["colours"]
-        return theme.build_theme(entry.label, theme.caelestia_ui(colours))
-    if entry.source == "auto":
-        if core.CAELESTIA_SCHEME.is_file():
-            colours = json.loads(core.CAELESTIA_SCHEME.read_text(encoding="utf-8"))["colours"]
-            return theme.build_theme("Auto", theme.caelestia_ui(colours))
-        variant = "dark" if core.system_prefers_dark() else "light"
-        return theme.build_theme("Auto", theme.static_ui(variant))
-    return None
+    if entry.group != "Kate++":
+        return None
+    cfg = cfg or core.load_config()
+    cfg = _with_source(cfg, entry.source)
+    resolved = cli.resolve_theme_source(cfg, cli.resolve_profile(cfg))
+    if resolved is None or ":" in resolved:
+        return None
+    accent, background, intensity = cli.theme_options(cfg, quiet=True)
+    return cli.adaptive_theme(resolved, accent, background, intensity)
+
+
+def _with_source(cfg, source):
+    import configparser
+    p = configparser.ConfigParser(interpolation=None)
+    p.read_dict({s: dict(cfg.parser[s]) for s in cfg.parser.sections()})
+    if not p.has_section("theme"):
+        p.add_section("theme")
+    p.set("theme", "source", source)
+    return core.Config(p)
 
 
 def render(t: dict, width: int = WIDTH) -> list[str]:
@@ -154,7 +162,18 @@ def _read_key(fd):
             b"[H": "home", b"[F": "end"}.get(seq, "")
 
 
-def _screen(items, sel, current_source, rows):
+def _layout(height):
+    """(list rows, preview lines) that fit a terminal `height` lines tall."""
+    header, gaps = 3, 3
+    preview_lines = len(SAMPLE)
+    rows = height - header - gaps - preview_lines
+    if rows < 5:                                   # small terminal: shorten the preview first
+        preview_lines = max(3, height - header - gaps - 5)
+        rows = max(3, height - header - gaps - preview_lines)
+    return rows, preview_lines
+
+
+def _screen(items, sel, current_source, rows, preview_lines=None):
     A, D, B, R = core.ACCENT, core.DIM, core.BOLD, core.RESET
     out = ["\033[H\033[2J", f"\n  {A}{B}Kate++{R}  {D}Pick a theme · ↑↓ / j k browse · Enter apply · q cancel{R}\n"]
     top = max(0, min(sel - rows // 2, len(items) - rows))
@@ -165,8 +184,7 @@ def _screen(items, sel, current_source, rows):
         label = f"{B}{e.label}{R}" if i == sel else e.label
         out.append(f"  {mark} {D}{e.group:<8}{R} {label}{cur}  {D}{e.note}{R}")
     out.append("")
-    out += preview(items[sel])
-    out.append("")
+    out += preview(items[sel])[:preview_lines or len(SAMPLE)]
     return "\n".join(out)
 
 
@@ -180,13 +198,14 @@ def pick_interactive(items, current_source):
     import tty
     fd = sys.stdin.fileno()
     old = termios.tcgetattr(fd)
+    import shutil
     sel = next((i for i, e in enumerate(items) if _same(e.source, current_source)), 0)
-    rows = 12
     sys.stdout.write("\033[?1049h\033[?25l")
     try:
         tty.setcbreak(fd)
         while True:
-            sys.stdout.write(_screen(items, sel, current_source, rows))
+            rows, preview_lines = _layout(shutil.get_terminal_size((80, 24)).lines)
+            sys.stdout.write(_screen(items, sel, current_source, rows, preview_lines))
             sys.stdout.flush()
             k = _read_key(fd)
             if k in ("up", "k"):
@@ -215,7 +234,10 @@ def pick_list(items, current_source):
     for i, e in enumerate(items, 1):
         cur = " (current)" if _same(e.source, current_source) else ""
         print(f"   {core.ACCENT}{i:>2}{core.RESET}  {e.label}{cur}  {core.DIM}{e.group} · {e.note}{core.RESET}")
-    choice = core.prompt("\n  Which theme? (number, Enter = cancel)")
+    if sys.stdin.isatty():
+        choice = core.prompt("\n  Which theme? (number, Enter = cancel)")
+    else:                                   # piped / scripted: read the number from stdin
+        choice = (sys.stdin.readline() or "").strip()
     if choice.isdigit() and 1 <= int(choice) <= len(items):
         return items[int(choice) - 1]
     return None
