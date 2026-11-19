@@ -665,9 +665,16 @@ def do_maintain(args):
     if not kate:
         return
     cfg = core.load_config()
+    # each step on its own: a failed snapshot must not stop the menu repair, and vice versa
     if cfg.flag("features", "backups"):
-        do_backup(args)
-    language_menu(cfg, kate, quiet=True)
+        try:
+            do_backup(args)
+        except Exception as e:  # noqa: BLE001 - background job: report and continue
+            warn(f"snapshot failed: {e}")
+    try:
+        language_menu(cfg, kate, quiet=True)
+    except Exception as e:  # noqa: BLE001 - e.g. Kate is rewriting its menu file right now
+        warn(f"Language menu check failed (will retry next run): {e}")
 
 
 def do_backup(args):
@@ -781,7 +788,8 @@ def do_doctor(args):
             (ok if bound else meh)(f"Notepad overlay {state['overlay_hotkey']}"
                                    + ("" if bound else " (not bound yet; reload Hyprland)"))
     if core.has_systemd_user():
-        for unit, want in (("kate-plusplus-backup.timer", cfg.flag("features", "backups")),
+        for unit, want in (("kate-plusplus-backup.timer", cfg.flag("features", "backups")
+                            or cfg.flag("features", "language-menu")),
                            ("kate-plusplus-theme.path", src in ("caelestia", "plasma"))):
             active = run("systemctl", "--user", "is-active", unit).stdout.strip() == "active"
             if want:
