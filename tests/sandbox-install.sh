@@ -87,4 +87,26 @@ assert not [k for k in a[0].attributes.keys() if k.startswith("kate-plusplus")],
 PY
 pass "Language menu: only Kate++'s own entries are removed, the user's label comes back"
 
+# --- a shortcut file Kate++ created keeps shortcuts the user added later ---
+H=$root/created; mkdir -p "$H"
+run install --yes
+F="$H/.local/share/kxmlgui5/kate/kateui.rc"
+[[ -f $F ]] || die "Kate++ should have created kateui.rc"
+python3 - "$F" <<'PY'
+import sys, xml.dom.minidom as m
+doc = m.parse(sys.argv[1])
+props = doc.getElementsByTagName("ActionProperties")[0]
+a = doc.createElement("Action"); a.setAttribute("name", "view_new_view"); a.setAttribute("shortcut", "Ctrl+Alt+N")
+props.appendChild(a); open(sys.argv[1], "w").write(doc.toxml())
+PY
+run uninstall --yes
+[[ -f $F ]] || die "uninstall deleted a file that holds the user's own shortcut"
+grep -q 'view_new_view' "$F" || die "the user's own shortcut was removed"
+grep -q 'kate-plusplus=' "$F" && die "Kate++ entries left behind"
+H=$root/created2; mkdir -p "$H"
+run install --yes
+run uninstall --yes
+[[ ! -e $H/.local/share/kxmlgui5/kate/kateui.rc ]] || die "a Kate++-only file should be removed on uninstall"
+pass "files Kate++ created: removed when untouched, kept with the user's own shortcuts"
+
 echo "All sandbox tests passed."
