@@ -52,17 +52,17 @@ while read -r a v; do s[$a]=${v:-}; done < <(read_shortcuts file_quit view_quick
 # D-Bus only exposes an action's *primary* shortcut, so Ctrl+T (secondary) isn't visible here;
 # the merge itself is covered by the single-shortcut overrides above.
 [[ ${s[file_new]} == 67108942 ]] || die "New should keep Ctrl+N as its primary shortcut (got ${s[file_new]})"
-action_shortcut() {  # $1 = kxmlgui file, $2 = action → its ActionProperties shortcut (or MISSING)
+action_shortcut() {  # $1 = kxmlgui file, $2 = action → "=<shortcut>" (attribute present) or "MISSING"
     python3 -c 'import sys, xml.dom.minidom as m
 for a in m.parse(sys.argv[1]).getElementsByTagName("Action"):
     if a.parentNode.tagName == "ActionProperties" and a.getAttribute("name") == sys.argv[2]:
-        print(a.getAttribute("shortcut")); break
+        print("=" + a.getAttribute("shortcut") if a.hasAttribute("shortcut") else "MISSING"); break
 else: print("MISSING")' "$1" "$2"
 }
-[[ $(action_shortcut "$H/.local/share/kxmlgui5/kate/kateui.rc" file_new) == "Ctrl+N; Ctrl+T" ]] \
-    || die "New should have Ctrl+N and Ctrl+T in Kate's shortcut file"
-[[ $(action_shortcut "$H/.local/share/kxmlgui5/katepart/katepart5ui.rc" transpose_char) == "" ]] \
-    || die "Transpose Characters should give up Ctrl+T"
+new_sc=$(action_shortcut "$H/.local/share/kxmlgui5/kate/kateui.rc" file_new) || die "could not read kateui.rc"
+[[ $new_sc == "=Ctrl+N; Ctrl+T" ]] || die "New should have Ctrl+N and Ctrl+T in Kate's shortcut file (got $new_sc)"
+tr_sc=$(action_shortcut "$H/.local/share/kxmlgui5/katepart/katepart5ui.rc" transpose_char) || die "could not read katepart5ui.rc"
+[[ $tr_sc == "=" ]] || die "Transpose Characters needs an explicitly empty shortcut (got $tr_sc)"
 pass "overrides applied, Kate's defaults and the user's own shortcut intact"
 
 kpp uninstall --yes
