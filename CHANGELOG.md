@@ -20,6 +20,8 @@ All notable changes to Kate++ are listed here. The format follows
   `kanagawa`, `everforest`) follow your system's light/dark preference.
 
 ### Fixed
+- The opt-in pop-up notepad no longer overwrites a `org.kde.kate.desktop` launcher override
+  you made yourself (uninstall used to delete it afterwards).
 - Uninstall now restores **exactly** the value each Kate setting had before Kate++, even
   when you skip restoring the full settings backup (previously those keys were deleted).
 - Uninstall keeps shortcuts you added in Kate after installing Kate++ (shortcuts Kate++ itself
