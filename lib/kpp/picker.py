@@ -149,17 +149,25 @@ def preview(entry: Entry) -> list[str]:
 
 # ----------------------------------------------------------------- terminal UI
 
-def _read_key(fd):
+KEYS = {b"[A": "up", b"[B": "down", b"[5~": "pgup", b"[6~": "pgdn", b"[H": "home", b"[F": "end",
+        b"OA": "up", b"OB": "down", b"OH": "home", b"OF": "end"}
+
+
+def _read_key(fd, timeout=0.05):
+    """One key press. Escape sequences may arrive in several short reads, so bytes are
+    collected until the sequence is complete or nothing more arrives within `timeout`."""
     ch = os.read(fd, 1)
     if ch != b"\x1b":
         return ch.decode(errors="ignore")
-    if not select.select([fd], [], [], 0.05)[0]:
-        return "esc"
-    seq = os.read(fd, 2)
-    if seq in (b"[5", b"[6"):
-        os.read(fd, 1)  # trailing "~"
-    return {b"[A": "up", b"[B": "down", b"[5": "pgup", b"[6": "pgdn",
-            b"[H": "home", b"[F": "end"}.get(seq, "")
+    seq = b""
+    while True:
+        if not select.select([fd], [], [], timeout)[0]:
+            return "esc" if not seq else KEYS.get(seq, "")   # lone ESC = cancel
+        seq += os.read(fd, 1)
+        if seq in KEYS:
+            return KEYS[seq]
+        if len(seq) >= 4 or (len(seq) >= 2 and seq[-1:].isalpha() or seq.endswith(b"~")):
+            return KEYS.get(seq, "")
 
 
 def _layout(height):
@@ -233,7 +241,7 @@ def pick_interactive(items, current_source):
 def pick_list(items, current_source):
     for i, e in enumerate(items, 1):
         cur = " (current)" if _same(e.source, current_source) else ""
-        print(f"   {core.ACCENT}{i:>2}{core.RESET}  {e.label}{cur}  {core.DIM}{e.group} · {e.note}{core.RESET}")
+        core.info(f"{core.ACCENT}{i:>2}{core.RESET}  {e.label}{cur}  {core.DIM}{e.group} · {e.note}{core.RESET}")
     if sys.stdin.isatty():
         choice = core.prompt("\n  Which theme? (number, Enter = cancel)")
     else:                                   # piped / scripted: read the number from stdin

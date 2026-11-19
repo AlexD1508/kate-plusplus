@@ -1,12 +1,37 @@
 """Unit tests for the theme picker's non-interactive parts.  Run: python3 -m unittest tests/test_picker.py"""
 import os
+import shutil
 import sys
+import tempfile
+import threading
+import time
 import unittest
 from unittest import mock
+
+# Sandbox *before* importing kpp: core captures HOME/XDG paths and KPP_TEST at import time.
+_SANDBOX = tempfile.mkdtemp(prefix="kpp-picker-test-")
+_ENV_KEYS = ("HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME", "KPP_TEST")
+_SAVED_ENV = {k: os.environ.get(k) for k in _ENV_KEYS}
+os.environ.update({
+    "HOME": _SANDBOX, "KPP_TEST": "1",
+    "XDG_CONFIG_HOME": os.path.join(_SANDBOX, ".config"),
+    "XDG_DATA_HOME": os.path.join(_SANDBOX, ".local/share"),
+    "XDG_STATE_HOME": os.path.join(_SANDBOX, ".local/state"),
+    "XDG_CACHE_HOME": os.path.join(_SANDBOX, ".cache"),
+})
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
 
 from kpp import cli, core, picker, ports  # noqa: E402
+
+
+def tearDownModule():
+    shutil.rmtree(_SANDBOX, ignore_errors=True)
+    for k, v in _SAVED_ENV.items():
+        if v is None:
+            os.environ.pop(k, None)
+        else:
+            os.environ[k] = v
 
 
 def ansi_fg(h):
@@ -70,6 +95,45 @@ class PickerTest(unittest.TestCase):
                 cli.do_theme(args)
             self.assertIn("Color Theme=Dracula", kate.katerc.read_text())
             info.assert_called_once()
+
+    def test_sandbox_is_in_place(self):
+        self.assertTrue(str(core.XDG_STATE).startswith(_SANDBOX))
+        self.assertFalse(core.CAELESTIA_SCHEME.exists())
+
+    def test_escape_sequence_split_across_reads(self):
+        r, w = os.pipe()
+        def feed():
+            for part in (b"\x1b", b"[", b"B"):
+                os.write(w, part)
+                time.sleep(0.02)
+        threading.Thread(target=feed).start()
+        self.assertEqual(picker._read_key(r), "down")
+        os.write(w, b"\x1b")
+        self.assertEqual(picker._read_key(r), "esc")          # a lone Escape still cancels
+        os.write(w, b"\x1b[6~")
+        self.assertEqual(picker._read_key(r), "pgdn")
+        os.close(r)
+        os.close(w)
+
+    def test_kate_list_excludes_themes_kate_plusplus_installed(self):
+        listing = "Dracula\nRosé Pine\nKanagawa Wave\nKate++ Dark\nNord\n"
+        with mock.patch.object(cli, "have", return_value=True), \
+                mock.patch.object(cli, "run", return_value=mock.Mock(stdout=listing)):
+            self.assertEqual(cli.kate_builtin_themes(), ["Dracula", "Nord"])
+
+    def test_theme_written_when_auto_selection_is_still_on(self):
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as tmp:
+            kate = core.Kate("native", ["kate"], Path(tmp), Path(tmp))
+            kate.katerc.write_text("[KTextEditor Renderer]\nAuto Color Theme Selection=true\nColor Theme=Dracula\n")
+            cfg = core.Config()
+            cfg.parser.read_dict({"theme": {"source": "Dracula"}})
+            with mock.patch.object(cli, "need_kate", return_value=kate), \
+                    mock.patch.object(core, "load_config", return_value=cfg), \
+                    mock.patch.object(cli, "build_themes", return_value="Dracula"), \
+                    mock.patch.object(cli, "step"), mock.patch.object(cli, "info"):
+                cli.do_theme(mock.Mock(pick=False))
+            self.assertIn("Auto Color Theme Selection=false", kate.katerc.read_text())
 
     def test_layout_fits_small_terminals(self):
         for height in (24, 30, 18, 12):

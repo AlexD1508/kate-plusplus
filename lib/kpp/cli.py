@@ -91,8 +91,9 @@ def kate_builtin_themes():
     for tool in ("ksyntaxhighlighter6", "kate-syntax-highlighter"):
         if have(tool):
             out = run(tool, "--list-themes").stdout or ""
+            ours = {name for name, *_rest in ports.PORTS.values()}   # installed by Kate++ itself
             names = [n.strip() for n in out.splitlines()
-                     if n.strip() and not n.strip().startswith("Kate++")]
+                     if n.strip() and not n.strip().startswith("Kate++") and n.strip() not in ours]
             if names:
                 return names
     return list(KATE_THEMES)
@@ -616,6 +617,7 @@ def do_apply(args, first_install=False):
 
 def do_pick_theme(args):
     from . import picker
+    core.QUIET = False   # picking is interactive: the choices must be visible even with --quiet
     need_kate()
     core.ensure_user_config()
     current = core.load_config().get("theme", "source")
@@ -653,16 +655,18 @@ def do_theme(args):
         core.info("Theme source is 'none'; Kate's own colours are left alone")
         return
     step(f"{name} regenerated")
-    current = core.read_rc_value(kate.katerc, "[KTextEditor Renderer]", "Color Theme")
-    if current != name:
+    r = "[KTextEditor Renderer]"
+    current = core.read_rc_value(kate.katerc, r, "Color Theme")
+    auto = core.read_rc_value(kate.katerc, r, "Auto Color Theme Selection")
+    if current != name or auto != "false":
         # Safe while Kate runs: Kate only writes back settings it changed itself. Goes through
-        # set_katerc so uninstall can restore the previous theme exactly.
+        # set_katerc so uninstall can restore the previous values exactly.
         state = core.load_state()
-        set_katerc(kate, state, [("[KTextEditor Renderer]", "Auto Color Theme Selection", "false"),
-                                 ("[KTextEditor Renderer]", "Color Theme", name)])
+        set_katerc(kate, state, [(r, "Auto Color Theme Selection", "false"), (r, "Color Theme", name)])
         core.save_state(state)
         if core.kate_running(kate):
             info(f"Restart Kate to see {name}")
+    return None
 
 
 # ======================================================================= backups

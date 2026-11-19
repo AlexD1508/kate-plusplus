@@ -170,7 +170,7 @@ syntax-colors = balanced   # soft | balanced | vivid
 kate-plusplus theme --pick
 ```
 
-Browse every theme (Kate++'s own, the popular ones, and all of Kate's built-ins) with a real-colour code preview right in your terminal. Arrow keys or <kbd>j</kbd>/<kbd>k</kbd> to browse, <kbd>Enter</kbd> to apply, <kbd>q</kbd> to cancel. It's also in the `kate-plusplus` menu.
+Browse every theme (Kate++'s own, the popular ones, and all of Kate's built-ins) with a real-colour code preview right in your terminal. Previews of Kate's built-in themes use `ksyntaxhighlighter6` (or `kate-syntax-highlighter`); without it you see an install hint instead, and applying them still works. Kate++'s own and the popular themes always preview. Arrow keys or <kbd>j</kbd>/<kbd>k</kbd> to browse, <kbd>Enter</kbd> to apply, <kbd>q</kbd> to cancel. It's also in the `kate-plusplus` menu.
 
 #### 🌈 Popular themes, ready to go
 
