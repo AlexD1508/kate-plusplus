@@ -8,6 +8,7 @@ import os
 import shutil
 import sys
 import tarfile
+import unicodedata
 import time
 from datetime import datetime
 from pathlib import Path
@@ -61,7 +62,9 @@ def resolve_profile(cfg) -> str:
 
 
 def _slug(text):
-    t = text.strip().lower().replace("é", "e").replace("'", "")
+    # decompose accents (é → e + ◌́, or already-decomposed input) and drop the marks
+    t = "".join(ch for ch in unicodedata.normalize("NFKD", text) if not unicodedata.combining(ch))
+    t = t.strip().lower().replace("'", "")
     return "-".join(t.replace("_", " ").replace("-", " ").split())
 
 
