@@ -12,6 +12,8 @@ All notable changes to Kate++ are listed here. The format follows
 
 ### Fixed
 - Uninstall keeps shortcut changes you made in Kate after installing Kate++.
+- <kbd>Ctrl</kbd>+<kbd>T</kbd> opens a new tab (Ctrl+N still works). Transpose Characters
+  moves off Ctrl+T and stays available in the command bar.
 - **Ten popular themes** Kate doesn't ship, built from their official palettes and lifted to
   WCAG AA contrast: Rosé Pine (Main, Moon, Dawn), Kanagawa (Wave, Dragon, Lotus),
   Everforest (Dark, Light), Night Owl and Synthwave '84.
