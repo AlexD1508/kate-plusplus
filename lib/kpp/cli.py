@@ -64,7 +64,9 @@ def resolve_profile(cfg) -> str:
 def _slug(text):
     # decompose accents (é → e + ◌́, or already-decomposed input) and drop the marks
     t = "".join(ch for ch in unicodedata.normalize("NFKD", text) if not unicodedata.combining(ch))
-    t = t.strip().lower().replace("'", "")
+    t = t.strip().lower()
+    for quote in ("'", "\u2019", "\u2018", "\u02bc", "`", "\u00b4"):   # ' ’ ‘ ʼ ` ´
+        t = t.replace(quote, "")
     return "-".join(t.replace("_", " ").replace("-", " ").split())
 
 
