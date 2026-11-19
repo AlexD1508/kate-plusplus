@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Kate++ snippet pack. Type the name in Kate's Snippets panel or via completion
+     (Ctrl+Space). ${...} are fields you can Tab through. MIT licensed. -->
+<snippets name="Kate++" filetypes="*" authors="kate-plusplus contributors" license="MIT" namespace="">
+ <script>
+function today() {
+    var d = new Date();
+    function p(n) { return (n &lt; 10 ? "0" : "") + n; }
+    return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate());
+}
+function now() {
+    var d = new Date();
+    function p(n) { return (n &lt; 10 ? "0" : "") + n; }
+    return today() + " " + p(d.getHours()) + ":" + p(d.getMinutes());
+}
+ </script>
+ <item>
+  <match>date</match>
+  <fillin>${today()}</fillin>
+ </item>
+ <item>
+  <match>datetime</match>
+  <fillin>${now()}</fillin>
+ </item>
+ <item>
+  <match>todo</match>
+  <fillin>TODO(${today()}): ${what}</fillin>
+ </item>
+ <item>
+  <match>fixme</match>
+  <fillin>FIXME(${today()}): ${what}</fillin>
+ </item>
+ <item>
+  <match>shebang-bash</match>
+  <fillin>#!/usr/bin/env bash
+set -euo pipefail
+${cursor}</fillin>
+ </item>
+ <item>
+  <match>shebang-python</match>
+  <fillin>#!/usr/bin/env python3
+"""${description}"""
+
+
+def main():
+    ${cursor}
+
+
+if __name__ == "__main__":
+    main()</fillin>
+ </item>
+ <item>
+  <match>lorem</match>
+  <fillin>Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.</fillin>
+ </item>
+ <item>
+  <match>md-table</match>
+  <fillin>| ${Column 1} | ${Column 2} | ${Column 3} |
+|---|---|---|
+| ${cursor} |  |  |</fillin>
+ </item>
+</snippets>
