@@ -19,10 +19,13 @@ def magick(*args):
     subprocess.run(["magick", *map(str, args)], check=True)
 
 
-def label(img, text, gravity, out):
-    magick(img, "-gravity", gravity, "-font", "DejaVu-Sans-Bold", "-pointsize", "26",
-           "-fill", "#0d1117cc", "-draw", f"roundrectangle {'24,24,214,74' if gravity == 'NorthWest' else f'{W-214},24,{W-24},74'} 14,14",
-           "-fill", "white", "-annotate", "+46+34" if gravity == "NorthWest" else "+46+34", text, out)
+def label(img, text, left, out):
+    """Pill label in a bottom corner (keeps menus and toolbars visible)."""
+    y0, y1 = H - 96, H - 50
+    x0, x1 = (24, 200) if left else (W - 200, W - 24)
+    magick(img, "-fill", "#0d1117d9", "-draw", f"roundrectangle {x0},{y0},{x1},{y1} 14,14",
+           "-font", "DejaVu-Sans-Bold", "-pointsize", "24", "-fill", "white",
+           "-gravity", "SouthWest" if left else "SouthEast", "-annotate", "+46+60", text, out)
 
 
 def main():
@@ -35,8 +38,8 @@ def main():
         b, a = t / "b.png", t / "a.png"
         magick(before, "-resize", f"{W}x{H}!", t / "b0.png")
         magick(after, "-resize", f"{W}x{H}!", t / "a0.png")
-        label(t / "b0.png", "Kate", "NorthWest", b)
-        label(t / "a0.png", "Kate++", "NorthEast", a)
+        label(t / "b0.png", "Kate", True, b)
+        label(t / "a0.png", "Kate++", False, a)
 
         frames = []
         # ease-in-out positions of the divider, before → after and back

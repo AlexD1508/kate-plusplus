@@ -143,6 +143,11 @@ def install_files(kate):
     shutil.copyfile(REPO / "assets/icon.svg", icon)
 
 
+def session_files(kate):
+    d = kate.data / "kate"
+    return sorted(d.glob("sessions/*.katesession")) + [p for p in (d / "anonymous.katesession",) if p.exists()]
+
+
 def ensure_sessions(kate):
     sessions = kate.data / "kate/sessions"
     sessions.mkdir(parents=True, exist_ok=True)

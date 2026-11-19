@@ -96,13 +96,30 @@ def mix(a, b, t):
                    for i in (0, 2, 4))
 
 
-def harmonise(base_hue, accent_hue, amount=0.18, cap=22, keep_away=42):
+def hue_distance(a, b):
+    return abs(((a - b + 180) % 360) - 180)
+
+
+def harmonise(base_hue, accent_hue, amount=0.18, cap=22):
+    """Nudge a token hue a little toward the accent so the palette feels related."""
     diff = ((accent_hue - base_hue + 180) % 360) - 180
-    hue = base_hue + max(-cap, min(cap, diff * amount))
-    gap = ((hue - accent_hue + 180) % 360) - 180
-    if abs(gap) < keep_away:  # never mistakable for a keyword
-        hue = accent_hue + (keep_away if gap >= 0 else -keep_away)
-    return hue % 360
+    return (base_hue + max(-cap, min(cap, diff * amount))) % 360
+
+
+def assign_hues(accent_hue, keep_away=40):
+    """Harmonised hue per token family. Keywords use the accent, so any family that
+    would land near it moves to the most open spot on the wheel: as far as possible
+    from the accent *and* every other family, preferring spots near its usual hue."""
+    hues = {k: harmonise(h, accent_hue) for k, h in HUES.items()}
+    clash = sorted((k for k, h in hues.items() if hue_distance(h, accent_hue) < keep_away),
+                   key=lambda k: hue_distance(hues[k], accent_hue))
+    placed = {k: h for k, h in hues.items() if k not in clash}
+    for k in clash:
+        taken = [accent_hue, *placed.values()]
+        placed[k] = max(range(0, 360, 2), key=lambda h: (
+            round(min(hue_distance(h, t) for t in taken) / 6),  # openness, in 6° steps
+            -hue_distance(h, HUES[k])))                          # then: close to its usual hue
+    return placed
 
 
 # ----------------------------------------------------------------- palettes
@@ -210,7 +227,7 @@ def build_theme(name, ui, intensity="balanced"):
     _, _, acc_h = hex_to_oklch(ui["accent"])
     L, C = (0.81, 0.085) if dark else (0.50, 0.12)
     C *= INTENSITY.get(intensity, 1.0)
-    p = {k: ensure_contrast(oklch_to_hex(L, C, harmonise(h, acc_h)), bg, 6.0) for k, h in HUES.items()}
+    p = {k: ensure_contrast(oklch_to_hex(L, C, h), bg, 6.0) for k, h in assign_hues(acc_h).items()}
     keyword = ensure_contrast(ui["accent"], bg, 6.0)
     comment = ensure_contrast(ui["comment"], bg, 4.6)
     fg = ensure_contrast(ui["fg"], bg, 10.0)

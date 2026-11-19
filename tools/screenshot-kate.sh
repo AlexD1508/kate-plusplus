@@ -46,9 +46,10 @@ sandbox() {  # $1 = before|after
 }
 
 shoot() {  # $1 = before|after
-    local d=$work/$1
-    hyprctl dispatch "hl.dsp.exec_cmd(\"env XDG_CONFIG_HOME=$d/config XDG_DATA_HOME=$d/data XDG_STATE_HOME=$d/state XDG_CACHE_HOME=$d/cache kate -n ${files[*]}\", { workspace = \"$ws silent\" })" >/dev/null
-    sleep 6
+    local d=$work/$1 session_args=""
+    [[ $1 == after ]] && session_args="-s Notepad"
+    hyprctl dispatch "hl.dsp.exec_cmd(\"env XDG_CONFIG_HOME=$d/config XDG_DATA_HOME=$d/data XDG_STATE_HOME=$d/state XDG_CACHE_HOME=$d/cache kate -n $session_args ${files[*]}\", { workspace = \"$ws silent\" })" >/dev/null
+    sleep 9
     grim -o "$name" "$out/$1.png"
     for p in $(pgrep -x kate); do
         tr '\0' '\n' </proc/"$p"/environ 2>/dev/null | grep -q "XDG_CONFIG_HOME=$d/config" && kill "$p" 2>/dev/null

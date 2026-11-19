@@ -17,9 +17,9 @@ The shortcuts your fingers already know. Colours that match your desktop.
 
 <br>
 
-<img src="assets/themes.png" width="860" alt="Kate++ themes">
+<img src="assets/before-after.gif" width="860" alt="Stock Kate wiping over to Kate++">
 
-<sub>One theme engine, five moods: it follows your wallpaper, your Plasma colours, or ships its own.</sub>
+<sub>Stock Kate → Kate++ on a Caelestia desktop. Same files, same machine. <a href="assets/screenshot.png">Full-size screenshot</a></sub>
 
 </div>
 
