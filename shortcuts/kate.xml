@@ -3,4 +3,6 @@
      every other shortcut keeps Kate's default. -->
 <overrides component="kate" file="kateui.rc">
   <Action name="file_quit" shortcut=""/>
+  <!-- Ctrl+T opens a new tab, like browsers and many editors (Ctrl+N still works) -->
+  <Action name="file_new" shortcut="Ctrl+N; Ctrl+T"/>
 </overrides>
