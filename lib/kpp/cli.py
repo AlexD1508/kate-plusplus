@@ -282,8 +282,8 @@ def remove_overlay():
     for f in (HYPR_FILE_LUA, HYPR_FILE_CONF, XDG_DATA / f"applications/{SCRATCH_ID}.desktop"):
         f.unlink(missing_ok=True)
     own = XDG_DATA / "applications/org.kde.kate.desktop"
-    if own.exists() and "X-KatePlusPlus=true" in own.read_text(encoding="utf-8"):
-        own.unlink()
+    if own.exists() and "X-KatePlusPlus=true" in own.read_text(encoding="utf-8", errors="replace"):
+        own.unlink()   # only Kate++'s own copy; same lenient decoding as when it was written
     if have("hyprctl"):
         run("hyprctl", "reload")
 
