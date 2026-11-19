@@ -5,6 +5,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shutil
 import sys
 import tarfile
@@ -247,6 +248,47 @@ def ensure_sessions(kate):
     step(f"Memory: \"{SESSION}\" session with stash (no save prompts, tabs survive restarts)")
 
 
+# Kate's LSP client (group "lspclient" in katerc): colour by meaning + inline hints.
+LSP = "[lspclient]"
+SMART_KEYS = ("SemanticHighlighting", "InlayHints", "AutoHover", "SignatureHelp", "Diagnostics")
+
+# Extra directories Kate's default server table searches after PATH (lspclient settings.json).
+_GO_DIRS = ("%{ENV:GOPATH}/bin", "%{ENV:HOME}/go/bin")
+_CARGO_DIRS = ("%{ENV:CARGO_HOME}/bin", "%{ENV:HOME}/.cargo/bin")
+SERVER_DIRS = {"gopls": _GO_DIRS, "rust-analyzer": _CARGO_DIRS}
+
+
+def server_installed(cmd):
+    """Found the way Kate finds it: on PATH, or in the server's extra default directories."""
+    if have(cmd):
+        return True
+    for d in SERVER_DIRS.get(cmd, ()):
+        env = re.match(r"%\{ENV:(\w+)\}", d)
+        base = os.environ.get(env.group(1)) if env else None
+        if base and os.access(Path(base + d[env.end():]) / cmd, os.X_OK):
+            return True
+    return False
+
+
+# (command, language, install hint) for the doctor overview
+LANGUAGE_SERVERS = [
+    # Commands are the ones Kate's built-in server table starts (pylsp for Python, …);
+    # other servers (e.g. pyright) need a custom entry in Kate's LSP Client settings.
+    (("pylsp",), "Python",
+     "Arch: pacman -S python-lsp-server · Debian/Ubuntu: apt install python3-pylsp · "
+     "else: pipx install python-lsp-server  (Kate's default Python server)"),
+    (("clangd",), "C / C++", "install clangd  (Debian/Ubuntu: apt install clangd · Arch: pacman -S clang)"),
+    (("typescript-language-server",), "JavaScript / TypeScript",
+     "npm i -g typescript typescript-language-server"),
+    (("rust-analyzer",), "Rust", "rustup component add rust-analyzer"),
+    (("jdtls",), "Java", "install jdtls (Eclipse JDT Language Server)"),
+    (("bash-language-server",), "Bash", "npm i -g bash-language-server"),
+    (("lua-language-server",), "Lua", "install lua-language-server"),
+    (("gopls",), "Go", "go install golang.org/x/tools/gopls@latest"),
+    (("marksman",), "Markdown", "install marksman"),
+]
+
+
 PRE_INSTALL = STATE_DIR / "katerc.before-kate-plusplus"
 
 
@@ -256,6 +298,9 @@ def managed_keys():
     keys = [(g, k) for g, k, _ in core.read_settings_ini(REPO / "config/kate.ini")]
     return keys + [(r, "Text Font"), (r, "Line Height Multiplier"), (r, "Color Theme"),
                    (r, "Auto Color Theme Selection"), ("[KTextEditor View]", "Scroll Bar MiniMap")]
+    # Keys added later (e.g. [lspclient]) are deliberately not here: versions without per-key
+    # records never set them, so the fallback must not delete a user's own values. Their
+    # records are trustworthy even on an incomplete legacy upgrade, and the fallback restores them.
 
 
 def set_katerc(kate, state, settings):
@@ -305,9 +350,18 @@ def restore_katerc(kate, state) -> bool:
     return True
 
 
-def remove_managed_katerc(kate):
-    """Fallback without complete records or a backup: remove the settings Kate++ manages."""
-    core.merge_rc(kate.katerc, [(g, k, "@delete") for g, k in managed_keys()])
+def remove_managed_katerc(kate, state=None):
+    """Fallback without complete records or a backup: remove the settings older versions
+    managed (their originals are unknown), and put back exactly the recorded originals of
+    keys only newer versions write: those were recorded before Kate++ first touched them."""
+    legacy = managed_keys()
+    changes = [(g, k, "@delete") for g, k in legacy]
+    old_keys = {f"{g}\t{k}" for g, k in legacy} | {f"{UI}\tColorScheme"}   # scheme: see do_uninstall
+    for rec, old in (state or {}).get("katerc_before", {}).items():
+        if rec not in old_keys:
+            group, key = rec.split("\t", 1)
+            changes.append((group, key, "@delete" if old is None else old))
+    core.merge_rc(kate.katerc, changes)
 
 
 UI = "[UiSettings]"
@@ -374,6 +428,8 @@ def kate_settings(cfg, kate, theme_name, state):
         (r, "Line Height Multiplier", f"{spacing:g}"),
         ("[KTextEditor View]", "Scroll Bar MiniMap", str(cfg.flag("editor", "minimap")).lower()),
     ]
+    if cfg.flag("editor", "smart-highlighting"):   # off: Kate's own LSP settings stay untouched
+        settings += [(LSP, key, "true") for key in SMART_KEYS]
     if theme_name:
         settings += [(r, "Auto Color Theme Selection", "false"), (r, "Color Theme", theme_name)]
     set_katerc(kate, state, settings)
@@ -930,6 +986,13 @@ def do_doctor(args):
         ok(f"{len(snaps)} snapshots, newest {_human(snaps[0].stat().st_mtime)}")
     elif cfg.flag("features", "backups"):
         meh("No snapshots yet")
+    if cfg.flag("editor", "smart-highlighting"):
+        found = [lang for cmds, lang, _ in LANGUAGE_SERVERS if any(server_installed(c) for c in cmds)]
+        (ok if found else meh)("Smart highlighting on · language servers: "
+                               + (", ".join(found) if found else "none installed yet"))
+        for cmds, lang, hint in LANGUAGE_SERVERS:
+            if lang not in found and lang in ("Python", "C / C++", "JavaScript / TypeScript", "Java", "Bash"):
+                info(f"{lang}: {DIM}{hint}{RESET}")
     if have("xdg-mime"):
         d = (run("xdg-mime", "query", "default", "text/plain").stdout or "").strip()
         (ok if d == "org.kde.kate.desktop" or not cfg.flag("features", "default-editor") else meh)(
@@ -984,7 +1047,7 @@ def do_uninstall(args):
     elif restore_katerc(kate, state):  # exactly what each key was before Kate++
         step("Your previous Kate settings restored")
     else:                               # older install without records and without a backup
-        remove_managed_katerc(kate)
+        remove_managed_katerc(kate, state)
         scheme = core.read_rc_value(kate.katerc, "[UiSettings]", "ColorScheme")
         if scheme and scheme.startswith(window.PREFIX):   # its file is gone; a manual pick stays
             core.merge_rc(kate.katerc, [("[UiSettings]", "ColorScheme", "@delete")])

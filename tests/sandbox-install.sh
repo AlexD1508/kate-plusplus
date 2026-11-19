@@ -21,6 +21,7 @@ grep -q '^Current Scheme=' "$H/.config/katerc"                && die "a shortcut
 grep -q '^Stash unsaved file changes=true' "$H/.config/katerc"  || die "stash not enabled"
 grep -q '^Color Theme=Kate++ ' "$H/.config/katerc"              || die "theme not set"
 grep -q '^Recent Files Count=10' "$H/.config/katerc"            || die "existing setting lost"
+grep -A6 '^\[lspclient\]' "$H/.config/katerc" | grep -q '^InlayHints=true' || die "smart highlighting not enabled"
 grep -q '^text/plain=org.kde.kate.desktop' "$H/.config/mimeapps.list" || die "default editor not set"
 for f in kxmlgui5/kate/kateui.rc kxmlgui5/katepart/katepart5ui.rc kxmlgui5/keyboardmacros/ui.rc \
          katepart5/script/commands/kate-plusplus.js \
@@ -43,6 +44,7 @@ run uninstall --yes
 diff -u "$root/katerc.orig" "$H/.config/katerc"    || die "katerc not restored"
 diff -u "$root/mime.orig" "$H/.config/mimeapps.list" || die "mimeapps.list not restored"
 [[ -f $H/.local/share/kate/sessions/Notepad.katesession ]] || die "user session was deleted"
+grep -q '^\[lspclient\]' "$H/.config/katerc" && die "uninstall left LSP settings behind"
 pass "uninstall restores everything, keeps notes"
 
 # --- 2. fresh Kate on KDE Plasma ---------------------------------------
@@ -157,6 +159,7 @@ pass "upgrade: originals are taken from the pre-install backup"
 # --- legacy: no records and no backup → managed settings removed, not falsely 'restored' ---
 H=$root/legacy; mkdir -p "$H/.config"
 run install --yes
+sed -i '/^\[lspclient\]/a MyOwnLspKey=1' "$H/.config/katerc"     # an LSP setting of the user's own
 python3 - "$H/.local/state/kate-plusplus/state.json" <<'PY'
 import json, sys
 p = sys.argv[1]; s = json.load(open(p)); s.pop("katerc_before", None); json.dump(s, open(p, "w"))
@@ -165,7 +168,32 @@ rm -f "$H/.local/state/kate-plusplus/katerc.before-kate-plusplus"
 out=$(env -i HOME="$H" PATH=/usr/bin:/bin KPP_TEST=1 ./bin/kate-plusplus uninstall --yes 2>&1)
 grep -q 'Kate++ settings removed' <<<"$out" || die "legacy uninstall should say settings were removed"
 grep -q '^Tabbar Tab Limit=' "$H/.config/katerc" && die "legacy uninstall left Kate++ settings behind"
+grep -q '^MyOwnLspKey=1' "$H/.config/katerc" || die "legacy uninstall removed the user's own LSP settings"
 pass "legacy uninstall removes Kate++ settings and says so"
+
+# --- legacy upgrade without backup: new [lspclient] keys are still restored exactly ---
+H=$root/legacy-lsp; mkdir -p "$H/.config"
+run install --yes
+python3 - "$H/.local/state/kate-plusplus/state.json" "$H/.config/katerc" <<'PY'
+import json, re, sys
+p = sys.argv[1]; s = json.load(open(p))
+s.pop("katerc_before", None); s.pop("katerc_complete", None); s["version"] = "1.0.1"
+json.dump(s, open(p, "w"))
+rc = open(sys.argv[2]).read()             # what 1.0.x left: no LSP keys of its own
+rc = re.sub(r"\[lspclient\]\n(?:[^\[\n][^\n]*\n|\n)*", "", rc)
+open(sys.argv[2], "w").write(rc + "\n[lspclient]\nInlayHints=false\nMyOwnLspKey=1\n")
+PY
+rm -f "$H/.local/state/kate-plusplus/katerc.before-kate-plusplus"
+run apply --yes                                                        # 1.0.x → this version
+grep -A8 '^\[lspclient\]' "$H/.config/katerc" | grep -q '^InlayHints=true' || die "upgrade did not enable inlay hints"
+out=$(env -i HOME="$H" PATH=/usr/bin:/bin KPP_TEST=1 ./bin/kate-plusplus uninstall --yes 2>&1)
+grep -q 'Kate++ settings removed' <<<"$out" || die "legacy upgrade should still use the fallback uninstall"
+grep -q '^InlayHints=false' "$H/.config/katerc" || die "legacy uninstall did not restore the user's InlayHints=false"
+for k in SemanticHighlighting AutoHover SignatureHelp Diagnostics; do
+    grep -q "^$k=" "$H/.config/katerc" && die "legacy uninstall left $k behind"
+done
+grep -q '^MyOwnLspKey=1' "$H/.config/katerc" || die "legacy uninstall removed the user's own LSP settings"
+pass "legacy upgrade without backup: LSP settings restored exactly"
 
 # --- legacy + 'theme' before 'apply', no backup: partial records must not count as complete ---
 H=$root/partial; mkdir -p "$H/.config"
