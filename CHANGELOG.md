@@ -15,12 +15,18 @@ All notable changes to Kate++ are listed here. The format follows
   Kate after installing is never overwritten, and uninstall restores your previous one.
 - <kbd>Ctrl</kbd>+<kbd>T</kbd> opens a new tab (Ctrl+N still works). Transpose Characters
   moves off Ctrl+T and stays available in the command bar.
+- **Theme picker:** `kate-plusplus theme --pick` (also in the menu) browses every theme with
+  a live, real-colour code preview in the terminal; Enter applies it, window colours included.
 - **Ten popular themes** Kate doesn't ship, built from their official palettes and lifted to
   WCAG AA contrast: Rosé Pine (Main, Moon, Dawn), Kanagawa (Wave, Dragon, Lotus),
   Everforest (Dark, Light), Night Owl and Synthwave '84.
 - `source` in `config.ini` accepts **any theme by name**, including every theme that ships
   with Kate (`Catppuccin Mocha`, `Dracula`, `Nord`, …). Family names (`rose-pine`,
   `kanagawa`, `everforest`) follow your system's light/dark preference.
+- **Smarter highlighting:** with a language server installed, Kate++ enables semantic
+  highlighting, inlay hints, hover docs, signature help and diagnostics
+  (`[editor] smart-highlighting = true`). `doctor` lists installed language servers with
+  install hints for missing popular ones.
 - **Auto-save (opt-in):** `[editor] auto-save = off | focus | <seconds>` saves tabs that
   have a local file path when the editor loses focus (also when moving to another part of
   Kate) and, with a number, N seconds (5–3600) after your last edit. Untitled tabs stay

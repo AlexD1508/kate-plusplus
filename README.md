@@ -166,6 +166,14 @@ syntax-colors = balanced   # soft | balanced | vivid
 
 <p align="center"><img src="assets/intensity.png" width="900" alt="soft, balanced and vivid syntax colours"></p>
 
+#### 🔍 Try them all, live
+
+```bash
+kate-plusplus theme --pick
+```
+
+Browse every theme (Kate++'s own, the popular ones, and all of Kate's built-ins) with a real-colour code preview right in your terminal. Previews of Kate's built-in themes use `ksyntaxhighlighter6` (or `kate-syntax-highlighter`); without it you see an install hint instead, and applying them still works. Kate++'s own and the popular themes always preview. Arrow keys or <kbd>j</kbd>/<kbd>k</kbd> to browse, <kbd>Enter</kbd> to apply, <kbd>q</kbd> to cancel. It's also in the `kate-plusplus` menu.
+
 #### 🌈 Popular themes, ready to go
 
 Prefer a classic? Put its name in `source`. Kate++ adds ten favourites that Kate doesn't ship. They're built from each project's official palette and keep its designer's choices, only lifted where needed so every colour meets WCAG AA contrast.
@@ -183,6 +191,20 @@ Prefer a classic? Put its name in `source`. Kate++ adds ten favourites that Kate
 A family name such as `rose-pine` picks the dark or light variant to match your system; a full name such as `Rosé Pine Moon` (or `rose-pine-main`) picks exactly that one. **Every theme that ships with Kate works too**: `Catppuccin Mocha`, `Dracula`, `Nord`, `Tokyo Night`, `gruvbox Dark`, `Atom One Dark`, `Solarized Light`, `Monokai`, `ayu Mirage`, … Capitals and spaces don't matter.
 
 Then `kate-plusplus apply`. With Caelestia or Plasma as the source, the theme regenerates by itself whenever your colours change.
+
+<br>
+
+#### 🔬 Smarter highlighting
+
+With a language server installed, Kate++ turns on Kate's meaning-aware extras: **semantic highlighting** (parameters, types, constants and functions coloured by what they *are*, not just how they look), **inline hints** (parameter names and inferred types in soft grey), hover docs, signature help and error underlines. Each extra appears only where the server supports it: clangd and rust-analyzer offer all of them, while Kate's default Python server (pylsp) gives completion, hover, signatures and errors but no semantic colours or inline hints. For those in Python, install `basedpyright` and point Kate's *LSP Client → User Server Settings* at it:
+
+```json
+{ "servers": { "python": { "command": ["basedpyright-langserver", "--stdio"] } } }
+```
+
+`kate-plusplus doctor` checks for the servers Kate starts by default (pylsp, clangd, typescript-language-server, rust-analyzer, …) and gives a one-line install hint for missing popular ones. A server you configured yourself, such as basedpyright, isn't detected there. Setting `smart-highlighting = false` under `[editor]` makes Kate++ stop managing these options; it doesn't switch them back off. To disable them, untick them in Kate's *Settings → Configure Kate → LSP Client* after applying.
+
+<sub>Language servers work on saved files (like in VS Code). Unsaved drafts still get regular highlighting, bracket matching, folding and word completion.</sub>
 
 <br>
 
@@ -216,6 +238,7 @@ Run `kate-plusplus` on its own for a small menu, or:
 |---|---|
 | `kate-plusplus config` | open your settings, then apply them |
 | `kate-plusplus apply` | re-apply `config.ini` |
+| `kate-plusplus theme --pick` | browse all themes with a live preview and apply one |
 | `kate-plusplus theme` | regenerate the editor theme |
 | `kate-plusplus backup` | snapshot sessions & unsaved tabs now |
 | `kate-plusplus restore` | pick a snapshot and bring it back |

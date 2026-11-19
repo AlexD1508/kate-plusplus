@@ -5,6 +5,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shutil
 import sys
 import tarfile
@@ -91,8 +92,9 @@ def kate_builtin_themes():
     for tool in ("ksyntaxhighlighter6", "kate-syntax-highlighter"):
         if have(tool):
             out = run(tool, "--list-themes").stdout or ""
+            ours = {name for name, *_rest in ports.PORTS.values()}   # installed by Kate++ itself
             names = [n.strip() for n in out.splitlines()
-                     if n.strip() and not n.strip().startswith("Kate++")]
+                     if n.strip() and not n.strip().startswith("Kate++") and n.strip() not in ours]
             if names:
                 return names
     return list(KATE_THEMES)
@@ -139,11 +141,12 @@ def theme_path(kate, slug):
     return kate.data / "org.kde.syntax-highlighting/themes" / f"{APP}-{slug}.theme"
 
 
-def build_themes(cfg, kate, source) -> str | None:
-    """Write the active theme (+ Kate++ Dark/Light so they're always selectable)."""
+def theme_options(cfg, quiet=False):
+    """Validated (accent, background, intensity) from config.ini."""
     intensity = cfg.get("theme", "syntax-colors").lower()
     if intensity not in theme.INTENSITY:
-        warn(f"syntax-colors '{intensity}' unknown; using balanced")
+        if not quiet:
+            warn(f"syntax-colors '{intensity}' unknown; using balanced")
         intensity = "balanced"
     accent, background = cfg.get("theme", "accent"), cfg.get("theme", "background")
     for name, val in (("accent", accent), ("background", background)):
@@ -151,29 +154,39 @@ def build_themes(cfg, kate, source) -> str | None:
             try:
                 theme.norm(val)
             except ValueError:
-                warn(f"{name} = {val} is not a hex colour like #7aa2f7; ignoring it")
+                if not quiet:
+                    warn(f"{name} = {val} is not a hex colour like #7aa2f7; ignoring it")
                 if name == "accent":
                     accent = ""
                 else:
                     background = ""
+    return accent, background, intensity
 
+
+def adaptive_theme(source, accent, background, intensity):
+    """Theme dict for a resolved Kate++ adaptive source (caelestia/plasma/dark/light)."""
+    if source in ("dark", "light"):
+        ui = theme.static_ui(source)
+    elif source == "caelestia":
+        ui = theme.caelestia_ui(json.loads(CAELESTIA_SCHEME.read_text(encoding="utf-8"))["colours"])
+    elif source == "plasma":
+        ui = theme.plasma_ui(KDEGLOBALS)
+    else:
+        return None
+    return theme.build_theme(THEME_NAMES[source], theme.apply_overrides(ui, accent, background), intensity)
+
+
+def build_themes(cfg, kate, source) -> str | None:
+    """Write the active theme (+ Kate++ Dark/Light so they're always selectable)."""
+    accent, background, intensity = theme_options(cfg)
     for slug in ports.PORTS:
         theme.write_theme(theme_path(kate, slug), ports.build(slug))
     for variant in ("dark", "light"):
-        ui = theme.static_ui(variant)
-        if source == variant:
-            ui = theme.apply_overrides(ui, accent, background)
+        own = source == variant
         theme.write_theme(theme_path(kate, variant),
-                          theme.build_theme(THEME_NAMES[variant], ui, intensity))
-    if source == "caelestia":
-        scheme = json.loads(CAELESTIA_SCHEME.read_text(encoding="utf-8"))
-        ui = theme.apply_overrides(theme.caelestia_ui(scheme["colours"]), accent, background)
-        theme.write_theme(theme_path(kate, "caelestia"),
-                          theme.build_theme(THEME_NAMES["caelestia"], ui, intensity))
-    elif source == "plasma":
-        ui = theme.apply_overrides(theme.plasma_ui(KDEGLOBALS), accent, background)
-        theme.write_theme(theme_path(kate, "plasma"),
-                          theme.build_theme(THEME_NAMES["plasma"], ui, intensity))
+                          adaptive_theme(variant, accent if own else "", background if own else "", intensity))
+    if source in ("caelestia", "plasma"):
+        theme.write_theme(theme_path(kate, source), adaptive_theme(source, accent, background, intensity))
     return theme_display_name(source)
 
 
@@ -235,6 +248,47 @@ def ensure_sessions(kate):
     step(f"Memory: \"{SESSION}\" session with stash (no save prompts, tabs survive restarts)")
 
 
+# Kate's LSP client (group "lspclient" in katerc): colour by meaning + inline hints.
+LSP = "[lspclient]"
+SMART_KEYS = ("SemanticHighlighting", "InlayHints", "AutoHover", "SignatureHelp", "Diagnostics")
+
+# Extra directories Kate's default server table searches after PATH (lspclient settings.json).
+_GO_DIRS = ("%{ENV:GOPATH}/bin", "%{ENV:HOME}/go/bin")
+_CARGO_DIRS = ("%{ENV:CARGO_HOME}/bin", "%{ENV:HOME}/.cargo/bin")
+SERVER_DIRS = {"gopls": _GO_DIRS, "rust-analyzer": _CARGO_DIRS}
+
+
+def server_installed(cmd):
+    """Found the way Kate finds it: on PATH, or in the server's extra default directories."""
+    if have(cmd):
+        return True
+    for d in SERVER_DIRS.get(cmd, ()):
+        env = re.match(r"%\{ENV:(\w+)\}", d)
+        base = os.environ.get(env.group(1)) if env else None
+        if base and os.access(Path(base + d[env.end():]) / cmd, os.X_OK):
+            return True
+    return False
+
+
+# (command, language, install hint) for the doctor overview
+LANGUAGE_SERVERS = [
+    # Commands are the ones Kate's built-in server table starts (pylsp for Python, …);
+    # other servers (e.g. pyright) need a custom entry in Kate's LSP Client settings.
+    (("pylsp",), "Python",
+     "Arch: pacman -S python-lsp-server · Debian/Ubuntu: apt install python3-pylsp · "
+     "else: pipx install python-lsp-server  (Kate's default Python server)"),
+    (("clangd",), "C / C++", "install clangd  (Debian/Ubuntu: apt install clangd · Arch: pacman -S clang)"),
+    (("typescript-language-server",), "JavaScript / TypeScript",
+     "npm i -g typescript typescript-language-server"),
+    (("rust-analyzer",), "Rust", "rustup component add rust-analyzer"),
+    (("jdtls",), "Java", "install jdtls (Eclipse JDT Language Server)"),
+    (("bash-language-server",), "Bash", "npm i -g bash-language-server"),
+    (("lua-language-server",), "Lua", "install lua-language-server"),
+    (("gopls",), "Go", "go install golang.org/x/tools/gopls@latest"),
+    (("marksman",), "Markdown", "install marksman"),
+]
+
+
 PRE_INSTALL = STATE_DIR / "katerc.before-kate-plusplus"
 
 
@@ -244,6 +298,9 @@ def managed_keys():
     keys = [(g, k) for g, k, _ in core.read_settings_ini(REPO / "config/kate.ini")]
     return keys + [(r, "Text Font"), (r, "Line Height Multiplier"), (r, "Color Theme"),
                    (r, "Auto Color Theme Selection"), ("[KTextEditor View]", "Scroll Bar MiniMap")]
+    # Keys added later (e.g. [lspclient]) are deliberately not here: versions without per-key
+    # records never set them, so the fallback must not delete a user's own values. Their
+    # records are trustworthy even on an incomplete legacy upgrade, and the fallback restores them.
 
 
 def _init_records(state):
@@ -306,14 +363,16 @@ def restore_katerc(kate, state) -> bool:
 
 
 def remove_managed_katerc(kate, state=None):
-    """Fallback without complete records or a backup: remove the settings Kate++ manages.
-    Auto-save keys only when Kate++ set them; values recorded for them are put back."""
-    changes = [(g, k, "@delete") for g, k in managed_keys()]
-    if state and state.get("auto_save_managed"):
-        before = state.get("katerc_before", {})
-        for k in AUTO_SAVE_KEYS:      # put back what was recorded; delete only the unknown
-            old = before.get(f"{DOC}\t{k}")
-            changes.append((DOC, k, "@delete" if old is None else old))
+    """Fallback without complete records or a backup: remove the settings older versions
+    managed (their originals are unknown), and put back exactly the recorded originals of
+    keys only newer versions write: those were recorded before Kate++ first touched them."""
+    legacy = managed_keys()
+    changes = [(g, k, "@delete") for g, k in legacy]
+    old_keys = {f"{g}\t{k}" for g, k in legacy} | {f"{UI}\tColorScheme"}   # scheme: see do_uninstall
+    for rec, old in (state or {}).get("katerc_before", {}).items():
+        if rec not in old_keys:
+            group, key = rec.split("\t", 1)
+            changes.append((group, key, "@delete" if old is None else old))
     core.merge_rc(kate.katerc, changes)
 
 
@@ -381,6 +440,8 @@ def kate_settings(cfg, kate, theme_name, state):
         (r, "Line Height Multiplier", f"{spacing:g}"),
         ("[KTextEditor View]", "Scroll Bar MiniMap", str(cfg.flag("editor", "minimap")).lower()),
     ]
+    if cfg.flag("editor", "smart-highlighting"):   # off: Kate's own LSP settings stay untouched
+        settings += [(LSP, key, "true") for key in SMART_KEYS]
     if theme_name:
         settings += [(r, "Auto Color Theme Selection", "false"), (r, "Color Theme", theme_name)]
     set_katerc(kate, state, settings)
@@ -737,25 +798,68 @@ def do_apply(args, first_install=False):
 
 # ======================================================================= theme
 
+def do_pick_theme(args):
+    from . import picker
+    core.QUIET = False   # picking is interactive: the choices must be visible even with --quiet
+    need_kate()
+    core.ensure_user_config()
+    current = core.load_config().get("theme", "source")
+    chosen = picker.pick(picker.entries(kate_builtin_themes()), current)
+    if chosen is None:
+        info("No change.")
+        return
+    core.set_user_config({("theme", "source"): chosen.source})
+    step(f"Theme set to {chosen.label}  {DIM}(source = {chosen.source}){RESET}")
+    args.pick = False
+    do_theme(args)
+    # keep the colour watcher in step with the new source (Caelestia/Plasma follow live changes)
+    cfg = core.load_config()
+    source = resolve_theme_source(cfg, resolve_profile(cfg))
+    quiet, core.QUIET = core.QUIET, True
+    try:
+        setup_systemd(cfg, source)
+    finally:
+        core.QUIET = quiet
+    state = core.load_state()
+    if state:
+        state["theme_source"] = source
+        core.save_state(state)
+
+
 def do_theme(args):
+    if getattr(args, "pick", False):
+        return do_pick_theme(args)
     kate = need_kate()
     cfg = core.load_config()
     profile = resolve_profile(cfg)
     source = resolve_theme_source(cfg, profile)
     name = build_themes(cfg, kate, source)
+    state = core.load_state()
+    installed = bool(state.get("version"))
+    changed = False
     if not name:
         core.info("Theme source is 'none'; Kate's own colours are left alone")
-        return
-    step(f"{name} regenerated")
-    current = core.read_rc_value(kate.katerc, "[KTextEditor Renderer]", "Color Theme")
-    if current != name:
-        if core.kate_running(kate):
-            info(f"Restart Kate (or pick {name} in Settings → Configure Kate → Color Themes)")
-        else:
-            state = core.load_state()
-            set_katerc(kate, state, [("[KTextEditor Renderer]", "Auto Color Theme Selection", "false"),
-                                     ("[KTextEditor Renderer]", "Color Theme", name)])
-            core.save_state(state)
+    else:
+        step(f"{name} regenerated")
+        r = "[KTextEditor Renderer]"
+        current = core.read_rc_value(kate.katerc, r, "Color Theme")
+        auto = core.read_rc_value(kate.katerc, r, "Auto Color Theme Selection")
+        if current != name or auto != "false":
+            # Safe while Kate runs: Kate only writes back settings it changed itself. Goes through
+            # set_katerc so uninstall can restore the previous values exactly.
+            set_katerc(kate, state, [(r, "Auto Color Theme Selection", "false"), (r, "Color Theme", name)])
+            changed = True
+    # Window colours follow the theme too (only once installed: a first install decides
+    # whether an existing scheme may be replaced, so it is left to apply).
+    if installed:
+        before = core.read_rc_value(kate.katerc, UI, "ColorScheme")
+        window_colors(cfg, kate, source, name, state)
+        changed = changed or core.read_rc_value(kate.katerc, UI, "ColorScheme") != before
+    if changed or installed:
+        core.save_state(state)
+    if changed and core.kate_running(kate):
+        info(f"Restart Kate to see {name or 'the new colours'}")
+    return None
 
 
 # ======================================================================= backups
@@ -958,6 +1062,13 @@ def do_doctor(args):
         ok(f"{len(snaps)} snapshots, newest {_human(snaps[0].stat().st_mtime)}")
     elif cfg.flag("features", "backups"):
         meh("No snapshots yet")
+    if cfg.flag("editor", "smart-highlighting"):
+        found = [lang for cmds, lang, _ in LANGUAGE_SERVERS if any(server_installed(c) for c in cmds)]
+        (ok if found else meh)("Smart highlighting on · language servers: "
+                               + (", ".join(found) if found else "none installed yet"))
+        for cmds, lang, hint in LANGUAGE_SERVERS:
+            if lang not in found and lang in ("Python", "C / C++", "JavaScript / TypeScript", "Java", "Bash"):
+                info(f"{lang}: {DIM}{hint}{RESET}")
     if have("xdg-mime"):
         d = (run("xdg-mime", "query", "default", "text/plain").stdout or "").strip()
         (ok if d == "org.kde.kate.desktop" or not cfg.flag("features", "default-editor") else meh)(
@@ -1061,6 +1172,7 @@ def do_menu(args):
           f"{DIM}overlay{RESET} {state.get('overlay_hotkey') or 'off'}\n")
     items = [("Apply settings", "re-apply config.ini", do_apply),
              ("Edit settings", "open config.ini", do_config),
+             ("Pick a theme", "browse themes with a live preview", do_pick_theme),
              ("Regenerate theme", "after changing colours", do_theme),
              ("Snapshot now", "back up sessions & unsaved tabs", do_backup),
              ("Restore a snapshot", "bring back older tabs", do_restore),
@@ -1092,7 +1204,9 @@ def main(argv=None):
         s.add_argument("--no-overlay", action="store_true")
         s.add_argument("--no-default-editor", action="store_true")
         s.add_argument("--no-backups", action="store_true")
-    sub.add_parser("theme", help="regenerate the editor theme").add_argument("--quiet", action="store_true")
+    t = sub.add_parser("theme", help="regenerate the editor theme, or --pick one with a live preview")
+    t.add_argument("--quiet", action="store_true")
+    t.add_argument("--pick", action="store_true", help="browse all themes with a live preview")
     sub.add_parser("backup", help="snapshot sessions & unsaved tabs").add_argument("--quiet", action="store_true")
     sub.add_parser("maintain", help="background job: snapshots + keep the Language menu").add_argument(
         "--quiet", action="store_true")
@@ -1105,7 +1219,7 @@ def main(argv=None):
 
     if getattr(args, "quiet", False):
         core.QUIET = True
-    for attr in ("yes", "quiet", "snapshot", "print"):
+    for attr in ("yes", "quiet", "snapshot", "print", "pick"):
         if not hasattr(args, attr):
             setattr(args, attr, False if attr != "snapshot" else None)
 
