@@ -94,4 +94,19 @@ grep -q 'Kate++ settings removed' <<<"$out" || die "legacy uninstall should say 
 grep -q '^Tabbar Tab Limit=' "$H/.config/katerc" && die "legacy uninstall left Kate++ settings behind"
 pass "legacy uninstall removes Kate++ settings and says so"
 
+# --- legacy + 'theme' before 'apply', no backup: partial records must not count as complete ---
+H=$root/partial; mkdir -p "$H/.config"
+run install --yes
+python3 - "$H/.local/state/kate-plusplus/state.json" <<'PY'
+import json, sys
+p = sys.argv[1]; s = json.load(open(p)); s.pop("katerc_before", None); s.pop("katerc_complete", None); json.dump(s, open(p, "w"))
+PY
+rm -f "$H/.local/state/kate-plusplus/katerc.before-kate-plusplus"
+sed -i 's/^source = .*/source = light/' "$H/.config/kate-plusplus/config.ini"
+run theme                                     # records only the two renderer keys
+out=$(env -i HOME="$H" PATH=/usr/bin:/bin KPP_TEST=1 ./bin/kate-plusplus uninstall --yes 2>&1)
+grep -q 'Kate++ settings removed' <<<"$out" || die "partial legacy records were treated as a full restore"
+grep -q '^Tabbar Tab Limit=' "$H/.config/katerc" && die "partial legacy uninstall left Kate++ settings behind"
+pass "partial legacy records fall back to removing Kate++ settings"
+
 echo "All sandbox tests passed."

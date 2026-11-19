@@ -159,14 +159,32 @@ def ensure_sessions(kate):
 PRE_INSTALL = STATE_DIR / "katerc.before-kate-plusplus"
 
 
+def managed_keys():
+    """Every katerc key Kate++ may set: config/kate.ini plus the ones built from config.ini."""
+    r = "[KTextEditor Renderer]"
+    keys = [(g, k) for g, k, _ in core.read_settings_ini(REPO / "config/kate.ini")]
+    return keys + [(r, "Text Font"), (r, "Line Height Multiplier"), (r, "Color Theme"),
+                   (r, "Auto Color Theme Selection"), ("[KTextEditor View]", "Scroll Bar MiniMap")]
+
+
 def set_katerc(kate, state, settings):
     """Write Kate settings, remembering each key's value from before Kate++ first touched it,
     so uninstall can put back exactly that (or remove the key if there was none).
 
-    The original comes from the pre-install backup when there is one (it predates every
-    Kate++ change, which matters when upgrading from versions that didn't keep records),
-    and the record is saved *before* katerc changes, so an error in between can't lose it."""
-    before = state.setdefault("katerc_before", {})
+    The original comes from the pre-install backup when there is one, and the record is saved
+    *before* katerc changes, so an error in between can't lose it. `katerc_complete` says
+    whether the records describe the true originals: always for new installs; for upgrades
+    from versions without records only when the pre-install backup exists (then every
+    managed key is seeded from it at once)."""
+    if "katerc_before" not in state:
+        state["katerc_before"] = {}
+        legacy = bool(state.get("version"))          # installed by a version without records
+        if legacy and PRE_INSTALL.exists():
+            for group, key in managed_keys():
+                state["katerc_before"][f"{group}\t{key}"] = core.read_rc_value(PRE_INSTALL, group, key)
+        state["katerc_complete"] = not legacy or PRE_INSTALL.exists()
+        core.save_state(state)
+    before = state["katerc_before"]
     new = False
     for group, key, _ in settings:
         k = f"{group}\t{key}"
@@ -182,7 +200,7 @@ def set_katerc(kate, state, settings):
 def restore_katerc(kate, state) -> bool:
     """Put recorded values back. Returns False when there were no records to restore from."""
     before = state.get("katerc_before", {})
-    if not before:
+    if not before or not state.get("katerc_complete", False):
         return False
     changes = []
     for k, old in before.items():
@@ -193,12 +211,8 @@ def restore_katerc(kate, state) -> bool:
 
 
 def remove_managed_katerc(kate):
-    """Legacy fallback (no records, no backup): remove the settings Kate++ manages."""
-    r = "[KTextEditor Renderer]"
-    keys = [(g, k) for g, k, _ in core.read_settings_ini(REPO / "config/kate.ini")]
-    keys += [(r, "Text Font"), (r, "Line Height Multiplier"), (r, "Color Theme"),
-             (r, "Auto Color Theme Selection"), ("[KTextEditor View]", "Scroll Bar MiniMap")]
-    core.merge_rc(kate.katerc, [(g, k, "@delete") for g, k in keys])
+    """Fallback without complete records or a backup: remove the settings Kate++ manages."""
+    core.merge_rc(kate.katerc, [(g, k, "@delete") for g, k in managed_keys()])
 
 
 def kate_settings(cfg, kate, theme_name, state):
