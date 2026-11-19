@@ -14,7 +14,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "lib"))
-from kpp import theme as T  # noqa: E402
+from kpp import ports, theme as T  # noqa: E402
 
 SAMPLE = """use std::collections::HashMap;
 
@@ -43,6 +43,8 @@ FOREST = {"surface": "0f1512", "onSurface": "dee4df", "onSurfaceVariant": "bfc9c
           "surfaceContainerLow": "171d1a", "surfaceContainerHigh": "252b29",
           "surfaceContainerHighest": "303634", "error": "ffb4ab", "errorContainer": "93000a",
           "onErrorContainer": "ffdad6"}
+
+POPULAR = [(f"{name} · by {ports.designer(slug)}", ports.build(slug)) for slug, (name, *_) in ports.PORTS.items()]
 
 GALLERIES = {
     "themes": [
@@ -100,9 +102,15 @@ def main():
         (work / "sample.rs").write_text(SAMPLE)
         profile = work / "profile"
         profile.mkdir()
-        for name, entries in GALLERIES.items():
-            cards = [card(work, f"{name}-{i}", label, T.build_theme(f"{name}-{i}", ui, inten))
-                     for i, (label, ui, inten) in enumerate(entries)]
+        built = {name: [(label, T.build_theme(f"{name}-{i}", ui, inten))
+                        for i, (label, ui, inten) in enumerate(entries)]
+                 for name, entries in GALLERIES.items()}
+        built["popular"] = POPULAR
+        for name, entries in built.items():
+            cards = []
+            for i, (label, th) in enumerate(entries):
+                th = dict(th, metadata=dict(th["metadata"], name=f"{name}-{i}"))
+                cards.append(card(work, f"{name}-{i}", label, th))
             page = work / f"{name}.html"
             page.write_text(f"<html><head><meta charset=utf-8><style>{CSS}</style></head>"
                             f"<body><div class=wrap>{''.join(cards)}</div></body></html>")
