@@ -154,13 +154,31 @@ Make it yours in `~/.config/kate-plusplus/config.ini`:
 
 ```ini
 [theme]
-source = auto              # auto | caelestia | plasma | dark | light | none
+source = auto              # auto | caelestia | plasma | dark | light | none | any theme name ↓
 accent = #7aa2f7           # any hex colour, or empty to follow the source
 background =               # e.g. #1a1b26
 syntax-colors = balanced   # soft | balanced | vivid
 ```
 
+<sub>`accent`, `background` and `syntax-colors` tune the adaptive Kate++ themes (`auto`, `caelestia`, `plasma`, `dark`, `light`). Named themes such as Rosé Pine or Dracula keep their designers' colours.</sub>
+
 <p align="center"><img src="assets/intensity.png" width="900" alt="soft, balanced and vivid syntax colours"></p>
+
+#### 🌈 Popular themes, ready to go
+
+Prefer a classic? Put its name in `source`. Kate++ adds ten favourites that Kate doesn't ship. They're built from each project's official palette and keep its designer's choices, only lifted where needed so every colour meets WCAG AA contrast.
+
+<p align="center"><img src="assets/popular.png" width="900" alt="Rosé Pine, Kanagawa, Everforest, Night Owl and Synthwave '84 in Kate++"></p>
+
+| `source =` | Variants | Palette by |
+|---|---|---|
+| `rose-pine` | Rosé Pine · Rosé Pine Moon · Rosé Pine Dawn | [Rosé Pine](https://rosepinetheme.com) |
+| `kanagawa` | Kanagawa Wave · Kanagawa Dragon · Kanagawa Lotus | [rebelot](https://github.com/rebelot/kanagawa.nvim) |
+| `everforest` | Everforest Dark · Everforest Light | [sainnhe](https://github.com/sainnhe/everforest) |
+| `night-owl` | Night Owl | [Sarah Drasner](https://github.com/sdras/night-owl-vscode-theme) |
+| `synthwave-84` | Synthwave '84 | [Robb Owen](https://github.com/robb0wen/synthwave-vscode) |
+
+A family name such as `rose-pine` picks the dark or light variant to match your system; a full name such as `Rosé Pine Moon` (or `rose-pine-main`) picks exactly that one. **Every theme that ships with Kate works too**: `Catppuccin Mocha`, `Dracula`, `Nord`, `Tokyo Night`, `gruvbox Dark`, `Atom One Dark`, `Solarized Light`, `Monokai`, `ayu Mirage`, … Capitals and spaces don't matter.
 
 Then `kate-plusplus apply`. With Caelestia or Plasma as the source, the theme regenerates by itself whenever your colours change.
 
@@ -262,7 +280,8 @@ Kate++ only ever changes the individual settings it manages. Everything else in 
 > **Set `source` in the `[theme]` section of `config.ini`**, then run `kate-plusplus apply`.
 > - `auto` follows your Caelestia wallpaper or KDE Plasma colours.
 > - `dark` / `light` use the built-in Kate++ themes.
-> - Add your own `accent`, `background` or `syntax-colors`. Readability is always kept.
+> - Or any theme by name: `rose-pine`, `kanagawa`, `Catppuccin Mocha`, `Dracula`, …
+> - Add your own `accent`, `background` or `syntax-colors` to the adaptive themes. Readability is always kept.
 
 </details>
 
@@ -311,6 +330,7 @@ Kate++ is a fan-made companion. It stands entirely on the shoulders of:
 - **[Notepad++](https://notepad-plus-plus.org)** by Don Ho and contributors: the editor whose comfort we're recreating (GPL-3.0). No Notepad++ code or artwork is used.
 - **[Caelestia](https://github.com/caelestia-dots)**: the desktop whose wallpaper colours the Caelestia flavour follows.
 - **[KSyntaxHighlighting](https://invent.kde.org/frameworks/syntax-highlighting)**: the highlighting engine Kate++ themes are written for.
+- **Theme palettes**: [Rosé Pine](https://rosepinetheme.com), [Kanagawa](https://github.com/rebelot/kanagawa.nvim) by rebelot, [Everforest](https://github.com/sainnhe/everforest) by sainnhe, [Night Owl](https://github.com/sdras/night-owl-vscode-theme) by Sarah Drasner and [Synthwave '84](https://github.com/robb0wen/synthwave-vscode) by Robb Owen (all MIT).
 - **[JetBrains Mono](https://www.jetbrains.com/lp/mono/)**: the default editor font when installed (OFL-1.1).
 
 > Kate++ is an independent project, not affiliated with or endorsed by KDE e.V. or the Notepad++ project. "Kate" and "Notepad++" are the names of their respective projects and are used here only to describe what Kate++ does.
