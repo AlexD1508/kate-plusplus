@@ -272,3 +272,7 @@ Kate++ is a fan-made companion. It stands entirely on the shoulders of:
 ## 📄 License
 
 [MIT](LICENSE) © 2026 AlexD1508 and contributors. The Kate++ icon is original artwork under the same license.
+
+<br>
+
+<p align="center"><sub>Built with help from <a href="https://claude.com/claude-code">Claude Code</a> 🤖💜</sub></p>
