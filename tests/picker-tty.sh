@@ -29,7 +29,8 @@ for key in (b"j", b"\x1b[B", b"\x1b[A", b"\r"):   # down, down, up, Enter → 2n
     os.write(fd, key)
     drain(1)
 drain(3)
-os.waitpid(pid, 0)
+_, status = os.waitpid(pid, 0)
+assert os.WIFEXITED(status) and os.WEXITSTATUS(status) == 0, f"picker failed (status {status}):\n{seen[-800:]!r}"
 assert b"\x1b[?1049l" in seen and b"\x1b[?25h" in seen, "terminal not restored"
 PY
 grep -q '^source = ' "$H/.config/kate-plusplus/config.ini"
