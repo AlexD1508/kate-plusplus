@@ -702,21 +702,31 @@ def do_theme(args):
     profile = resolve_profile(cfg)
     source = resolve_theme_source(cfg, profile)
     name = build_themes(cfg, kate, source)
+    state = core.load_state()
+    installed = bool(state.get("version"))
+    changed = False
     if not name:
         core.info("Theme source is 'none'; Kate's own colours are left alone")
-        return
-    step(f"{name} regenerated")
-    r = "[KTextEditor Renderer]"
-    current = core.read_rc_value(kate.katerc, r, "Color Theme")
-    auto = core.read_rc_value(kate.katerc, r, "Auto Color Theme Selection")
-    if current != name or auto != "false":
-        # Safe while Kate runs: Kate only writes back settings it changed itself. Goes through
-        # set_katerc so uninstall can restore the previous values exactly.
-        state = core.load_state()
-        set_katerc(kate, state, [(r, "Auto Color Theme Selection", "false"), (r, "Color Theme", name)])
+    else:
+        step(f"{name} regenerated")
+        r = "[KTextEditor Renderer]"
+        current = core.read_rc_value(kate.katerc, r, "Color Theme")
+        auto = core.read_rc_value(kate.katerc, r, "Auto Color Theme Selection")
+        if current != name or auto != "false":
+            # Safe while Kate runs: Kate only writes back settings it changed itself. Goes through
+            # set_katerc so uninstall can restore the previous values exactly.
+            set_katerc(kate, state, [(r, "Auto Color Theme Selection", "false"), (r, "Color Theme", name)])
+            changed = True
+    # Window colours follow the theme too (only once installed: a first install decides
+    # whether an existing scheme may be replaced, so it is left to apply).
+    if installed:
+        before = core.read_rc_value(kate.katerc, UI, "ColorScheme")
+        window_colors(cfg, kate, source, name, state)
+        changed = changed or core.read_rc_value(kate.katerc, UI, "ColorScheme") != before
+    if changed or installed:
         core.save_state(state)
-        if core.kate_running(kate):
-            info(f"Restart Kate to see {name}")
+    if changed and core.kate_running(kate):
+        info(f"Restart Kate to see {name or 'the new colours'}")
     return None
 
 

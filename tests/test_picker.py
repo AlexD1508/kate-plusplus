@@ -135,6 +135,34 @@ class PickerTest(unittest.TestCase):
                 cli.do_theme(mock.Mock(pick=False))
             self.assertIn("Auto Color Theme Selection=false", kate.katerc.read_text())
 
+    def test_picked_theme_also_updates_window_colours(self):
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as tmp:
+            kate = core.Kate("native", ["kate"], Path(tmp) / "cfg", Path(tmp) / "data")
+            kate.config.mkdir()
+            kate.data.mkdir()
+            kate.katerc.write_text("[KTextEditor Renderer]\nColor Theme=Breeze Dark\n")
+            state = {"version": core.VERSION}
+            cfg = core.Config()
+            with mock.patch.object(cli, "need_kate", return_value=kate), \
+                    mock.patch.object(core, "load_state", return_value=state), \
+                    mock.patch.object(core, "save_state"), \
+                    mock.patch.object(core, "load_config", return_value=cfg), \
+                    mock.patch.object(cli, "step"), mock.patch.object(cli, "info"):
+                schemes = []
+                for slug in ("rose-pine", "kanagawa-wave"):
+                    cfg.parser.read_dict({"theme": {"source": ports.PORTS[slug][0], "window-colors": "match"}})
+                    cli.do_theme(mock.Mock(pick=False))
+                    schemes.append(core.read_rc_value(kate.katerc, cli.UI, "ColorScheme"))
+                self.assertTrue(all(s and s.startswith("KatePlusPlus") for s in schemes), schemes)
+                self.assertNotEqual(schemes[0], schemes[1])
+                self.assertEqual(state["window_scheme"], schemes[1])
+                # a scheme the user picked in Kate by hand stays
+                core.merge_rc(kate.katerc, [(cli.UI, "ColorScheme", "Breeze")])
+                cfg.parser.read_dict({"theme": {"source": ports.PORTS["rose-pine"][0]}})
+                cli.do_theme(mock.Mock(pick=False))
+                self.assertEqual(core.read_rc_value(kate.katerc, cli.UI, "ColorScheme"), "Breeze")
+
     def test_layout_fits_small_terminals(self):
         for height in (24, 30, 18, 12):
             rows, preview_lines = picker._layout(height)

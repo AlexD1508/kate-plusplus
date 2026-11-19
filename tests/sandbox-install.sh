@@ -176,13 +176,14 @@ p = sys.argv[1]; s = json.load(open(p)); s.pop("katerc_before", None); s.pop("ka
 PY
 rm -f "$H/.local/state/kate-plusplus/katerc.before-kate-plusplus"
 sed -i 's/^source = .*/source = light/' "$H/.config/kate-plusplus/config.ini"
-run theme                                     # records only the two renderer keys
+run theme                                     # records only the renderer keys + window scheme
 python3 - "$H/.local/state/kate-plusplus/state.json" <<'PY' || die "theme did not create the partial legacy records"
 import json, sys
 s = json.load(open(sys.argv[1]))
 assert s.get("katerc_complete") is False, s.get("katerc_complete")
 keys = set(s.get("katerc_before", {}))
-assert keys == {"[KTextEditor Renderer]\tAuto Color Theme Selection", "[KTextEditor Renderer]\tColor Theme"}, keys
+assert keys == {"[KTextEditor Renderer]\tAuto Color Theme Selection", "[KTextEditor Renderer]\tColor Theme",
+                "[UiSettings]\tColorScheme"}, keys
 PY
 out=$(env -i HOME="$H" PATH=/usr/bin:/bin KPP_TEST=1 ./bin/kate-plusplus uninstall --yes 2>&1)
 grep -q 'Kate++ settings removed' <<<"$out" || die "partial legacy records were treated as a full restore"
