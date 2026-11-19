@@ -254,7 +254,8 @@ DEFAULTS = {
     "theme": {"source": "auto", "accent": "", "background": "", "syntax-colors": "balanced",
               "window-colors": "match"},
     "editor": {"font": "auto", "font-size": "11", "line-spacing": "1.15", "minimap": "true",
-               "ligatures": "true", "smart-highlighting": "true", "auto-save": "off"},
+               "ligatures": "true", "smart-highlighting": "true", "auto-save": "off",
+               "breadcrumbs": "true"},
 }
 
 
@@ -293,6 +294,125 @@ def ensure_user_config(overrides: dict[tuple[str, str], str] | None = None) -> b
     if overrides:
         set_user_config(overrides)
     return created
+
+
+_SECT = configparser.ConfigParser.SECTCRE   # same rules load_config() uses
+_OPT = configparser.ConfigParser.OPTCRE
+
+
+def _classify(lines):
+    """[(kind, name)] per line, following ConfigParser's reading order: full-line comments,
+    then continuation lines (indented deeper than the option they belong to, even across
+    blank lines), then section headers (also `[editor] # notes`), then options (any
+    capitalisation, `=` or `:`). kind is "section", "option" or None."""
+    out, optname, indent = [], False, 0
+    for line in lines:
+        text = line.strip()
+        if text[:1] in ("#", ";"):
+            out.append((None, None))
+            continue
+        if not text:
+            out.append((None, None))         # blank lines don't end a multi-line value
+            continue
+        cur = len(line) - len(line.lstrip())
+        if optname and cur > indent:
+            out.append((None, None))         # continuation of the previous option's value
+            continue
+        m = _SECT.match(text)
+        if m:
+            optname = False
+            out.append(("section", m.group("header")))   # exactly as ConfigParser: "[ editor ]" ≠ "editor"
+            continue
+        m = _OPT.match(text)
+        if m:
+            optname, indent = True, cur
+            out.append(("option", m.group("option").strip().lower()))
+            continue
+        optname = False
+        out.append((None, None))
+    return out
+
+
+def _template_options(lines):
+    """{section: [(key, block_lines)]}: each option with the comment lines just above it."""
+    out, section, pending = {}, None, []
+    for line, (kind, name) in zip(lines, _classify(lines)):
+        if kind == "section":
+            section, pending = name, []
+            out.setdefault(section, [])
+        elif line.strip().startswith("#"):
+            pending.append(line)
+        elif kind == "option" and section:
+            out[section].append((name, pending + [line]))
+            pending = []
+        else:
+            pending = []
+    return out
+
+
+def _parse(text):
+    p = configparser.ConfigParser(interpolation=None)
+    p.read_string(text)
+    return p
+
+
+def upgrade_user_config() -> list[str]:
+    """Add options introduced by newer Kate++ versions to an existing config.ini, with their
+    comments and default values. Existing values and the user's own edits are never touched.
+    Sections and options are matched the way ConfigParser reads them, and the result is
+    parsed before it is written: if it wouldn't load, or any existing value would change,
+    the user's file is left exactly as it was. Returns the added keys."""
+    if not USER_CONFIG.is_file():
+        return []
+    template = _template_options((REPO / "config/config.ini").read_text(encoding="utf-8").splitlines())
+    try:
+        original = USER_CONFIG.read_text(encoding="utf-8")
+    except OSError as exc:
+        warn(f"Couldn't read {USER_CONFIG} to add new options ({exc}); using their defaults")
+        return []
+    lines = original.splitlines()
+    added, where = [], []
+    for section, options in template.items():
+        kinds = _classify(lines)
+        start = next((i for i, (k, n) in enumerate(kinds) if k == "section" and n == section), None)
+        if start is None:
+            missing = options
+        else:
+            end = next((i for i in range(start + 1, len(lines)) if kinds[i][0] == "section"), len(lines))
+            present = {n for k, n in kinds[start + 1:end] if k == "option"}
+            missing = [(key, block) for key, block in options if key not in present]
+        if not missing:
+            continue
+        block = [line for _, b in missing for line in b]
+        if start is None:
+            lines += ["", f"[{section}]", *block]
+        else:
+            ins = end
+            while ins > start + 1 and not lines[ins - 1].strip():
+                ins -= 1
+            lines[ins:ins] = block
+        added += [key for key, _ in missing]
+        where += [(section, key) for key, _ in missing]
+    if not added:
+        return []
+    text = "\n".join(lines) + "\n"
+    try:
+        before, after = _parse(original), _parse(text)
+        unchanged = all(after.get(sec, key, raw=True) == before.get(sec, key, raw=True)
+                        for sec in before.sections() for key in before[sec])
+        unchanged = unchanged and all(after.has_option(sec, key) for sec, key in where)
+    except configparser.Error:
+        unchanged = False
+    if not unchanged:
+        warn(f"Couldn't add new options to {USER_CONFIG} safely; it was left unchanged. "
+             f"Missing options use their defaults: {', '.join(added)}")
+        return []
+    try:
+        atomic_write(USER_CONFIG.resolve(), text)   # a symlinked config (dotfiles) stays a symlink
+    except OSError as exc:
+        warn(f"Couldn't write {USER_CONFIG} to add new options ({exc}); using their defaults")
+        return []
+    return added
 
 
 def set_user_config(values: dict[tuple[str, str], str]):

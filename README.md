@@ -62,7 +62,7 @@ A **harmonised** syntax theme: strings green, numbers orange, functions blue. Ea
 <td valign="top">
 
 ### 🗂️ The Notepad++ layout
-A **Language** menu on the menu bar (pick Java for a quick draft, close Kate, and it's still a Java tab weeks later), unlimited tabs with close buttons, double-click the tab bar for a new file, middle-click to close, **document map** (minimap), **function list**, folder-as-workspace, Markdown preview, colour swatches, rainbow brackets.
+A **Language** menu on the menu bar (pick Java for a quick draft, close Kate, and it's still a Java tab weeks later), unlimited tabs with close buttons, double-click the tab bar for a new file, middle-click to close, **document map** (minimap), **breadcrumbs** above the text (folder › file, plus the function or class you're in when a language server is running; click to jump), **function list**, folder-as-workspace, Markdown preview, colour swatches, rainbow brackets.
 
 </td>
 <td valign="top">

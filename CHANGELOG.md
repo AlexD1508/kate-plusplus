@@ -41,6 +41,11 @@ All notable changes to Kate++ are listed here. The format follows
 - `doctor` warns when the **qtengine** platform theme (used by Caelestia) asks for a Qt style
   that isn't installed, e.g. Darkly, and says how to install it. Other platform themes such
   as qt6ct aren't checked.
+- **Breadcrumbs:** a slim bar above the text shows folder › file and, when a language server
+  provides symbols, the innermost function or class at the cursor; click a crumb to jump
+  (Kate's navigation bar with the current symbol). `[editor] breadcrumbs = true | false`.
+- `apply` adds options introduced by newer Kate++ versions to an existing `config.ini`
+  (with their comments), so new settings show up in `kate-plusplus config`.
 
 ### Fixed
 - The opt-in pop-up notepad no longer overwrites a `org.kde.kate.desktop` launcher override

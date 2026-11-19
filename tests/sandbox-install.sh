@@ -21,6 +21,8 @@ grep -q '^Current Scheme=' "$H/.config/katerc"                && die "a shortcut
 grep -q '^Stash unsaved file changes=true' "$H/.config/katerc"  || die "stash not enabled"
 grep -q '^Color Theme=Kate++ ' "$H/.config/katerc"              || die "theme not set"
 grep -q '^Recent Files Count=10' "$H/.config/katerc"            || die "existing setting lost"
+grep -q '^Show Url Nav Bar=true' "$H/.config/katerc"            || die "breadcrumbs not enabled"
+grep -q '^Show Symbol In Navigation Bar=true' "$H/.config/katerc" || die "breadcrumb symbol not enabled"
 grep -A6 '^\[lspclient\]' "$H/.config/katerc" | grep -q '^InlayHints=true' || die "smart highlighting not enabled"
 grep -q '^text/plain=org.kde.kate.desktop' "$H/.config/mimeapps.list" || die "default editor not set"
 for f in kxmlgui5/kate/kateui.rc kxmlgui5/katepart/katepart5ui.rc kxmlgui5/keyboardmacros/ui.rc \
@@ -31,7 +33,85 @@ done
 pass "generic install"
 
 sed -i 's/^accent =$/accent = #e06c75/; s/^syntax-colors = balanced/syntax-colors = vivid/' "$H/.config/kate-plusplus/config.ini"
+sed -i 's/^breadcrumbs = true/breadcrumbs = false/' "$H/.config/kate-plusplus/config.ini"
 run apply --yes
+grep -q '^Show Url Nav Bar=false' "$H/.config/katerc" || die "breadcrumbs = false not applied"
+
+# config.ini from an older Kate++ (no breadcrumbs line) gains the option on apply,
+# with its comment, while the user's own values stay as they are
+sed -i '/^breadcrumbs = /d' "$H/.config/kate-plusplus/config.ini"
+run apply --yes
+grep -q '^breadcrumbs = true' "$H/.config/kate-plusplus/config.ini" || die "new option not added to an existing config.ini"
+grep -q '^accent = #e06c75' "$H/.config/kate-plusplus/config.ini"   || die "upgrade changed the user's own values"
+[[ $(grep -c '^breadcrumbs = ' "$H/.config/kate-plusplus/config.ini") == 1 ]] || die "option added twice"
+run apply --yes
+[[ $(grep -c '^breadcrumbs = ' "$H/.config/kate-plusplus/config.ini") == 1 ]] || die "option duplicated on re-apply"
+# Every fixture below drops one template option (font-size) first, so apply has to insert it:
+# the insertion, the parse check and the rejection paths all run.
+C="$H/.config/kate-plusplus/config.ini"
+upgrade() {  # run only the migration, capture its warnings; fails the test on an exception
+    env -i HOME="$H" PATH=/usr/bin:/bin KPP_TEST=1 python3 - "$PWD/lib" 2>&1 >/dev/null <<'PY'
+import sys
+sys.path.insert(0, sys.argv[1])
+from kpp import core
+print(",".join(core.upgrade_user_config()))
+PY
+}
+loads() { python3 -c 'import configparser,sys; c=configparser.ConfigParser(interpolation=None); c.read(sys.argv[1])' "$C"; }
+
+# the other ways ConfigParser accepts a file: a header with a trailing comment, another
+# capitalisation, and ':' as the delimiter. Existing options are recognised, never duplicated.
+sed -i 's/^\[editor\]$/[editor]  # my editor settings/; s/^minimap = true .*/MiniMap = true/; s/^breadcrumbs = true .*/breadcrumbs: true/; /^font-size = /d' "$C"
+run apply --yes
+loads || die "upgrade broke a config written in alternative syntax"
+[[ $(grep -c '^\[editor\]' "$C") == 1 ]]   || die "section with a trailing comment was duplicated"
+[[ $(grep -ci '^minimap' "$C") == 1 ]]      || die "MiniMap was duplicated"
+[[ $(grep -c '^breadcrumbs' "$C") == 1 ]]   || die "'breadcrumbs:' was duplicated"
+[[ $(grep -c '^font-size = ' "$C") == 1 ]]  || die "missing font-size was not inserted exactly once"
+grep -q '^MiniMap = true$' "$C"             || die "the user's original text was changed"
+
+# an indented "[example]" inside a multi-line value is not a section (ConfigParser rules)
+python3 - "$C" <<'PY'
+import sys
+p = sys.argv[1]
+s = open(p).read().replace("[editor]  # my editor settings\n",
+                           "[editor]  # my editor settings\nnotes = example configuration\n    [example]\n", 1)
+open(p, "w").write(s)
+PY
+sed -i '/^font-size = /d' "$C"
+run apply --yes
+loads || die "upgrade broke a config with a multi-line value"
+[[ $(grep -ci '^minimap' "$C") == 1 ]]     || die "option after a multi-line value was duplicated"
+[[ $(grep -c '^font-size = ' "$C") == 1 ]] || die "font-size not inserted next to a multi-line value"
+grep -q '^    \[example\]$' "$C"           || die "the multi-line value was changed"
+
+# "[ editor ]" is a different section for ConfigParser: the option must land in a real [editor]
+cp "$C" "$root/config.before"
+printf '[ editor ]\nnote = spaced\n' > "$C"
+added=$(upgrade | tail -1)
+loads || die "upgrade broke a config with a spaced section name"
+python3 -c 'import configparser,sys; c=configparser.ConfigParser(interpolation=None); c.read(sys.argv[1]); sys.exit(0 if c.has_option("editor","breadcrumbs") and c.has_section(" editor ") else 1)' "$C" \
+    || die "options were added to '[ editor ]' instead of [editor] (got: $added)"
+cp "$root/config.before" "$C"
+
+# a config.ini that's already unreadable is never rewritten, and the user is told
+sed -i '/^font-size = /d' "$C"
+printf '\n[editor]\nfont = auto\n' >> "$C"            # duplicate section → ConfigParser error
+cp "$C" "$root/config.broken"
+out=$(upgrade)
+cmp -s "$root/config.broken" "$C"            || die "an unreadable config.ini was rewritten"
+grep -q "left unchanged" <<<"$out"           || die "no warning for an unreadable config.ini"
+cp "$root/config.before" "$C"
+
+# read / write errors warn and never stop apply (missing options just use their defaults)
+sed -i '/^font-size = /d' "$C"
+chmod 000 "$C"
+out=$(upgrade); chmod 644 "$C"
+grep -q "Couldn't read" <<<"$out"            || die "no warning when config.ini can't be read"
+chmod 555 "$(dirname "$C")"
+out=$(upgrade); chmod 755 "$(dirname "$C")"
+grep -q "Couldn't write" <<<"$out"           || die "no warning when config.ini can't be written"
+cp "$root/config.before" "$C"
 run theme
 python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$H/.local/share/org.kde.syntax-highlighting/themes/kate-plusplus-dark.theme"
 pass "apply + theme with overrides"
@@ -280,9 +360,15 @@ H=$root/upgrade; mkdir -p "$H/.config"
 printf '[General]\nTabbar Tab Limit=5\n\n[KTextEditor Renderer]\nColor Theme=Dracula\n' > "$H/.config/katerc"
 cp "$H/.config/katerc" "$root/katerc.upgrade"
 run install --yes
-python3 - "$H/.local/state/kate-plusplus/state.json" <<'PY'
+# what 1.0.x left behind: no records, and none of the keys only newer versions write
+env -i HOME="$H" PATH=/usr/bin:/bin KPP_TEST=1 PYTHONPATH=lib python3 - "$H/.local/state/kate-plusplus/state.json" <<'PY'
 import json, sys
-p = sys.argv[1]; s = json.load(open(p)); s.pop("katerc_before", None); json.dump(s, open(p, "w"))
+from kpp import cli, core
+p = sys.argv[1]; s = json.load(open(p)); records = s.pop("katerc_before")
+legacy = {f"{g}\t{k}" for g, k in cli.managed_keys()}
+core.merge_rc(core.XDG_CONFIG / "katerc", [(*rec.split("\t", 1), "@delete" if old is None else old)
+                            for rec, old in records.items() if rec not in legacy])
+json.dump(s, open(p, "w"))
 PY
 run apply --yes                                                        # 1.0.x → this version
 rm "$H/.local/state/kate-plusplus/katerc.before-kate-plusplus"
@@ -328,6 +414,57 @@ for k in SemanticHighlighting AutoHover SignatureHelp Diagnostics; do
 done
 grep -q '^MyOwnLspKey=1' "$H/.config/katerc" || die "legacy uninstall removed the user's own LSP settings"
 pass "legacy upgrade without backup: LSP settings restored exactly"
+
+# --- fallback uninstall (records incomplete, no backup): Show Url Nav Bar is removed like
+# 1.0.x did (its record may hold Kate++'s own value), the newer symbol key is put back exactly ---
+H=$root/legacy-crumbs; mkdir -p "$H/.config"
+printf '[General]\nShow Symbol In Navigation Bar=false\n' > "$H/.config/katerc"
+run install --yes
+grep -q '^Show Symbol In Navigation Bar=true' "$H/.config/katerc" || die "breadcrumb symbol not enabled"
+python3 - "$H/.local/state/kate-plusplus/state.json" <<'PY'
+import json, sys
+p = sys.argv[1]; s = json.load(open(p)); s["katerc_complete"] = False; json.dump(s, open(p, "w"))
+PY
+rm -f "$H/.local/state/kate-plusplus/katerc.before-kate-plusplus"
+run uninstall --yes
+grep -q '^Show Symbol In Navigation Bar=false$' "$H/.config/katerc" || die "fallback uninstall lost the user's own breadcrumb symbol setting"
+grep -q '^Show Url Nav Bar=' "$H/.config/katerc" && die "fallback uninstall left Show Url Nav Bar (1.0.x wrote it too)"
+pass "fallback uninstall restores breadcrumb settings exactly"
+
+# --- a key only newer versions write is recorded from the live katerc, not the old backup ---
+H=$root/live-record; mkdir -p "$H/.config"
+printf '[General]\nShow Symbol In Navigation Bar=true\n' > "$H/.config/katerc"     # in the pre-install backup
+run install --yes
+python3 - "$H/.local/state/kate-plusplus/state.json" <<'PY'
+import json, sys        # pretend this install predates breadcrumbs: no record for the symbol key yet
+p = sys.argv[1]; s = json.load(open(p)); s["katerc_before"].pop("[General]\tShow Symbol In Navigation Bar"); json.dump(s, open(p, "w"))
+PY
+sed -i 's/^Show Symbol In Navigation Bar=.*/Show Symbol In Navigation Bar=false/' "$H/.config/katerc"   # user's later choice
+run apply --yes                          # records the new key (the backup still exists here)
+rm "$H/.local/state/kate-plusplus/katerc.before-kate-plusplus"   # as if the user declined the full restore
+run uninstall --yes
+python3 - "$H/.config/katerc" <<'PY' || die "uninstall restored the old backup's value, not the user's later one"
+import sys
+assert "Show Symbol In Navigation Bar=false" in open(sys.argv[1]).read()
+PY
+pass "newer keys are recorded from the live settings"
+
+# --- a symlinked config.ini (dotfiles) stays a symlink when new options are added ---
+H=$root/cfg-link; mkdir -p "$H/.config" "$H/dotfiles"
+run install --yes
+mv "$H/.config/kate-plusplus/config.ini" "$H/dotfiles/kpp.ini"
+ln -s "$H/dotfiles/kpp.ini" "$H/.config/kate-plusplus/config.ini"
+sed -i '/^breadcrumbs = /d' "$H/dotfiles/kpp.ini"
+run apply --yes
+[[ -L $H/.config/kate-plusplus/config.ini ]] || die "adding new options replaced the symlinked config.ini"
+grep -q '^breadcrumbs = ' "$H/dotfiles/kpp.ini" || die "new option not added to the symlink's target"
+
+# --- an invalid breadcrumbs value warns and uses the default ---
+sed -i 's/^breadcrumbs = .*/breadcrumbs = maybe/' "$H/dotfiles/kpp.ini"
+out=$(env -i HOME="$H" PATH=/usr/bin:/bin KPP_TEST=1 ./bin/kate-plusplus apply --yes 2>&1)
+grep -q "breadcrumbs = maybe isn't true or false" <<<"$out" || die "invalid breadcrumbs value did not warn"
+grep -q '^Show Url Nav Bar=true' "$H/.config/katerc" || die "invalid breadcrumbs value did not fall back to true"
+pass "symlinked config.ini kept; invalid breadcrumbs value warns"
 
 # --- legacy + 'theme' before 'apply', no backup: partial records must not count as complete ---
 H=$root/partial; mkdir -p "$H/.config"
