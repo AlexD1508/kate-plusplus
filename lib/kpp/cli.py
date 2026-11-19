@@ -385,7 +385,7 @@ def pin_main_session():
     if not src:
         return
     dest = XDG_DATA / "applications/org.kde.kate.desktop"
-    if dest.exists() and not _is_ours(dest):
+    if dest.is_symlink() or (dest.exists() and not _is_ours(dest)):   # incl. a dangling link
         warn(f"Not touching your own {dest}; Kate files may open in the Scratchpad session "
              "while it runs. Add `-s Notepad` to its Exec= lines to avoid that.")
         return
