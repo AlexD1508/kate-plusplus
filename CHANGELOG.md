@@ -7,6 +7,8 @@ All notable changes to Kate++ are listed here. The format follows
 ## [Unreleased]
 
 ### Added
+- **Theme picker:** `kate-plusplus theme --pick` (also in the menu) browses every theme with
+  a live, real-colour code preview in the terminal; Enter applies it.
 - **Ten popular themes** Kate doesn't ship, built from their official palettes and lifted to
   WCAG AA contrast: Rosé Pine (Main, Moon, Dawn), Kanagawa (Wave, Dragon, Lotus),
   Everforest (Dark, Light), Night Owl and Synthwave '84.

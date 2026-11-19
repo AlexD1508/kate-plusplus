@@ -27,6 +27,8 @@ jobs:
         run: pipx run pyflakes lib/kpp bin/kate-plusplus tools
       - name: ShellCheck
         run: shellcheck install.sh tests/*.sh tools/screenshot-kate.sh
+      - name: Theme picker unit tests
+        run: python3 -m unittest tests/test_picker.py
       - name: Notepad++ Tools (JavaScript)
         run: node tests/kate-scripts.test.js kate-scripts/kate-plusplus.js
       - name: Shortcut overrides are valid XML
@@ -65,5 +67,7 @@ jobs:
         run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends kate xdg-utils dbus libglib2.0-bin
       - name: Install → apply → theme → backup → uninstall
         run: bash tests/sandbox-install.sh
+      - name: Theme picker in a pseudo-terminal
+        run: bash tests/picker-tty.sh
       - name: Shortcuts work in a running Kate (defaults intact, overrides applied)
         run: bash tests/kate-shortcuts.sh

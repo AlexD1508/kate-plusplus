@@ -168,6 +168,8 @@ def detect_kate() -> Kate | None:
 
 
 def kate_running(kate: Kate) -> bool:
+    if os.environ.get("KPP_TEST"):   # sandboxed tests never look at the developer's real Kate
+        return False
     if kate.kind == "flatpak":
         return "org.kde.kate" in (run("flatpak", "ps", "--columns=application").stdout or "")
     return run("pgrep", "-x", "kate").returncode == 0
