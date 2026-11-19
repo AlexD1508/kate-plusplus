@@ -603,7 +603,24 @@ def do_apply(args, first_install=False):
 
 # ======================================================================= theme
 
+def do_pick_theme(args):
+    from . import picker
+    need_kate()
+    core.ensure_user_config()
+    current = core.load_config().get("theme", "source")
+    chosen = picker.pick(picker.entries(kate_builtin_themes()), current)
+    if chosen is None:
+        info("No change.")
+        return
+    core.set_user_config({("theme", "source"): chosen.source})
+    step(f"Theme set to {chosen.label}  {DIM}(source = {chosen.source}){RESET}")
+    args.pick = False
+    do_theme(args)
+
+
 def do_theme(args):
+    if getattr(args, "pick", False):
+        return do_pick_theme(args)
     kate = need_kate()
     cfg = core.load_config()
     profile = resolve_profile(cfg)
@@ -912,6 +929,7 @@ def do_menu(args):
           f"{DIM}overlay{RESET} {state.get('overlay_hotkey') or 'off'}\n")
     items = [("Apply settings", "re-apply config.ini", do_apply),
              ("Edit settings", "open config.ini", do_config),
+             ("Pick a theme", "browse themes with a live preview", do_pick_theme),
              ("Regenerate theme", "after changing colours", do_theme),
              ("Snapshot now", "back up sessions & unsaved tabs", do_backup),
              ("Restore a snapshot", "bring back older tabs", do_restore),
@@ -943,7 +961,9 @@ def main(argv=None):
         s.add_argument("--no-overlay", action="store_true")
         s.add_argument("--no-default-editor", action="store_true")
         s.add_argument("--no-backups", action="store_true")
-    sub.add_parser("theme", help="regenerate the editor theme").add_argument("--quiet", action="store_true")
+    t = sub.add_parser("theme", help="regenerate the editor theme, or --pick one with a live preview")
+    t.add_argument("--quiet", action="store_true")
+    t.add_argument("--pick", action="store_true", help="browse all themes with a live preview")
     sub.add_parser("backup", help="snapshot sessions & unsaved tabs").add_argument("--quiet", action="store_true")
     sub.add_parser("maintain", help="background job: snapshots + keep the Language menu").add_argument(
         "--quiet", action="store_true")
@@ -956,7 +976,7 @@ def main(argv=None):
 
     if getattr(args, "quiet", False):
         core.QUIET = True
-    for attr in ("yes", "quiet", "snapshot", "print"):
+    for attr in ("yes", "quiet", "snapshot", "print", "pick"):
         if not hasattr(args, attr):
             setattr(args, attr, False if attr != "snapshot" else None)
 
