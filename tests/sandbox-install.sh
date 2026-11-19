@@ -284,6 +284,20 @@ run uninstall --yes
 [[ $(readlink "$sd/kate-plusplus.xml") == "$H/dotfiles/snips.xml" ]] || die "uninstall did not restore the user's symlink"
 grep -q 'kate-plusplus.xml' "$H/.config/katerc" && die "fallback uninstall left the pack in enabledRepositories"
 
+# a pre-existing file identical to the pack (plain, and as a symlink) comes back on uninstall
+for kind in file link; do
+    H=$root/snipsame-$kind; sd=$H/.local/share/ktexteditor_snippets/data; mkdir -p "$sd" "$H/dotfiles"
+    if [[ $kind == file ]]; then cp snippets/kate-plusplus.xml "$sd/kate-plusplus.xml"
+    else cp snippets/kate-plusplus.xml "$H/dotfiles/snips.xml"; ln -s "$H/dotfiles/snips.xml" "$sd/kate-plusplus.xml"; fi
+    run install --yes
+    run uninstall --yes
+    if [[ $kind == file ]]; then
+        cmp -s snippets/kate-plusplus.xml "$sd/kate-plusplus.xml" || die "uninstall deleted the user's own copy of the pack"
+    else
+        [[ $(readlink "$sd/kate-plusplus.xml") == "$H/dotfiles/snips.xml" ]] || die "uninstall did not restore the symlink to the user's copy"
+    fi
+done
+
 # a same-named file Kate++ has no record of owning is left alone by uninstall
 H=$root/snipnotours; sd=$H/.local/share/ktexteditor_snippets/data
 run install --yes

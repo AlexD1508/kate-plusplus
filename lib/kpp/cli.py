@@ -442,7 +442,7 @@ def install_snippets(kate, state):
     if last is None:            # first time: remember what was there, to undo it exactly
         state.setdefault("snippets_dir_created", not dst.parent.exists())
         state.setdefault("snippets_before_enabled", str(dst) in _enabled_repos(kate))
-        if os.path.lexists(dst) and current != hashlib.sha256(ours.encode()).hexdigest():
+        if os.path.lexists(dst):    # even byte-identical to the pack: it's still theirs
             SNIPPETS_BEFORE.parent.mkdir(parents=True, exist_ok=True)
             if not os.path.lexists(SNIPPETS_BEFORE):    # someone else's file with this name
                 shutil.copy2(dst, SNIPPETS_BEFORE, follow_symlinks=False)
