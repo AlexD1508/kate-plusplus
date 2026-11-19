@@ -10,6 +10,9 @@ All notable changes to Kate++ are listed here. The format follows
 - **Language menu** on the menu bar, like Notepad++: pick a language for any tab, including
   unsaved drafts. If a Kate update rebuilds its menus, the background job re-adds it within
   10 minutes (systemd); otherwise run `kate-plusplus apply`.
+- **Matching window colours:** picking a theme now colours Kate's whole window (menus, tabs,
+  sidebars, status bar) to match. `window-colors = match | system`; a scheme you pick in
+  Kate after installing is never overwritten, and uninstall restores your previous one.
 - <kbd>Ctrl</kbd>+<kbd>T</kbd> opens a new tab (Ctrl+N still works). Transpose Characters
   moves off Ctrl+T and stays available in the command bar.
 - **Ten popular themes** Kate doesn't ship, built from their official palettes and lifted to

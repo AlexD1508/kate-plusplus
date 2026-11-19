@@ -110,6 +110,25 @@ run uninstall --yes
 pass "files Kate++ created: removed when untouched, kept with the user's own shortcuts"
 
 # --- 3. user values Kate++ overwrites come back exactly, even without the full backup ---
+
+# --- 3. matching window colours: theme switch, manual choice is kept, uninstall restores ---
+H=$root/window; mkdir -p "$H/.config"
+printf '[UiSettings]\nColorScheme=BreezeDark\n' > "$H/.config/katerc"
+run install --yes
+sed -i 's/^source = .*/source = rose-pine/' "$H/.config/kate-plusplus/config.ini"
+run apply --yes
+grep -q '^ColorScheme=KatePlusPlusRosePine$' "$H/.config/katerc" || die "window colours don't follow the theme"
+[[ -f $H/.local/share/color-schemes/KatePlusPlusRosePine.colors ]] || die "no matching colour scheme written"
+sed -i 's/^ColorScheme=.*/ColorScheme=Solarized/' "$H/.config/katerc"      # user picks one in Kate
+run apply --yes
+run apply --yes                                                            # and it must stay picked
+grep -q '^ColorScheme=Solarized$' "$H/.config/katerc" || die "a hand-picked window scheme was overwritten"
+run uninstall --yes
+grep -q '^ColorScheme=BreezeDark$' "$H/.config/katerc" || die "uninstall did not restore the original window scheme"
+compgen -G "$H/.local/share/color-schemes/KatePlusPlus*" >/dev/null && die "uninstall left colour schemes behind"
+pass "window colours match the theme, respect manual choices, uninstall restores"
+
+# --- 4. user values Kate++ overwrites come back exactly, even without the full backup ---
 H=$root/restore; mkdir -p "$H/.config"
 printf '[General]\nTabbar Tab Limit=5\nShow Status Bar=false\nMy Own Key=1\n\n[KTextEditor Renderer]\nColor Theme=Dracula\n' > "$H/.config/katerc"
 cp "$H/.config/katerc" "$root/katerc.user"
@@ -169,5 +188,39 @@ out=$(env -i HOME="$H" PATH=/usr/bin:/bin KPP_TEST=1 ./bin/kate-plusplus uninsta
 grep -q 'Kate++ settings removed' <<<"$out" || die "partial legacy records were treated as a full restore"
 grep -q '^Tabbar Tab Limit=' "$H/.config/katerc" && die "partial legacy uninstall left Kate++ settings behind"
 pass "partial legacy records fall back to removing Kate++ settings"
+
+# --- legacy upgrade restores the original window scheme even without the full backup ---
+H=$root/legacy-scheme; mkdir -p "$H/.config"
+printf '[UiSettings]\nColorScheme=BreezeDark\n' > "$H/.config/katerc"
+run install --yes
+python3 - "$H/.local/state/kate-plusplus/state.json" <<'PY'
+import json, sys
+p = sys.argv[1]; s = json.load(open(p)); s.pop("katerc_before", None); s.pop("katerc_complete", None); json.dump(s, open(p, "w"))
+PY
+sed -i 's/^source = .*/source = rose-pine/' "$H/.config/kate-plusplus/config.ini"
+run apply --yes
+rm "$H/.local/state/kate-plusplus/katerc.before-kate-plusplus"
+run uninstall --yes
+grep -q '^ColorScheme=BreezeDark$' "$H/.config/katerc" || die "legacy upgrade lost the original window scheme"
+pass "legacy upgrade: the original window scheme comes back"
+
+# --- upgrade without backup: a scheme the user picked is kept and survives uninstall ---
+H=$root/legacy-pick; mkdir -p "$H/.config"
+run install --yes
+python3 - "$H/.local/state/kate-plusplus/state.json" <<'PY'
+import json, sys   # an install from a version without window colours or records
+p = sys.argv[1]; s = json.load(open(p))
+for k in ("katerc_before", "katerc_complete", "window_scheme"): s.pop(k, None)
+json.dump(s, open(p, "w"))
+PY
+rm -f "$H/.local/state/kate-plusplus/katerc.before-kate-plusplus"
+PYTHONPATH=lib python3 -c 'import sys, pathlib; from kpp import core
+core.merge_rc(pathlib.Path(sys.argv[1]), [("[UiSettings]", "ColorScheme", "Solarized")])' "$H/.config/katerc"   # picked in Kate
+sed -i 's/^source = .*/source = rose-pine/' "$H/.config/kate-plusplus/config.ini"
+run apply --yes
+grep -q '^ColorScheme=Solarized$' "$H/.config/katerc" || die "upgrade replaced a scheme the user picked"
+run uninstall --yes
+grep -q '^ColorScheme=Solarized$' "$H/.config/katerc" || die "uninstall lost the user's scheme"
+pass "upgrade without backup keeps the user's window scheme through uninstall"
 
 echo "All sandbox tests passed."
