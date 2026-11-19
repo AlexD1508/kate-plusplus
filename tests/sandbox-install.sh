@@ -17,12 +17,13 @@ printf '[Default Applications]\ntext/plain=org.gnome.TextEditor.desktop\nimage/p
 cp "$H/.config/katerc" "$root/katerc.orig"; cp "$H/.config/mimeapps.list" "$root/mime.orig"
 
 run install --yes
-grep -q '^Current Scheme=Notepad++' "$H/.config/katerc"       || die "shortcut scheme not set"
+grep -q '^Current Scheme=' "$H/.config/katerc"                && die "a shortcut scheme is set (it would wipe normal keys)"
 grep -q '^Stash unsaved file changes=true' "$H/.config/katerc"  || die "stash not enabled"
 grep -q '^Color Theme=Kate++ ' "$H/.config/katerc"              || die "theme not set"
 grep -q '^Recent Files Count=10' "$H/.config/katerc"            || die "existing setting lost"
 grep -q '^text/plain=org.kde.kate.desktop' "$H/.config/mimeapps.list" || die "default editor not set"
-for f in kate/shortcuts/Notepad++ katepart/shortcuts/Notepad++ katepart5/script/commands/kate-plusplus.js \
+for f in kxmlgui5/kate/kateui.rc kxmlgui5/katepart/katepart5ui.rc kxmlgui5/keyboardmacros/ui.rc \
+         katepart5/script/commands/kate-plusplus.js \
          org.kde.syntax-highlighting/themes/kate-plusplus-dark.theme kate/sessions/Notepad.katesession; do
     [[ -f $H/.local/share/$f ]] || die "missing $f"
 done

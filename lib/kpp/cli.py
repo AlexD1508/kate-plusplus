@@ -12,13 +12,11 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from . import core, theme
+from . import core, shortcuts, theme
 from .core import (APP, BACKUP_DIR, BIN_LINK, CAELESTIA_SCHEME, DIM, BOLD, RESET, ACCENT,
                    GREEN, YELLOW, RED, KDEGLOBALS, REPO, STATE_DIR, USER_CONFIG, VERSION,
                    XDG_CONFIG, XDG_DATA, banner, info, section, step, warn, fail, ask, have, run)
 
-SHORTCUT_COMPONENTS = ("kate", "katepart", "keyboardmacros")
-SCHEME = "Notepad++"
 SESSION = "Notepad"
 SCRATCH_SESSION = "Scratchpad"
 SCRATCH_ID = "kate-scratchpad"
@@ -126,12 +124,9 @@ def build_themes(cfg, kate, source) -> str | None:
 
 # ======================================================================= install / apply
 
-def install_files(kate):
-    for comp in SHORTCUT_COMPONENTS:
-        dst = kate.data / comp / "shortcuts" / SCHEME
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(REPO / "shortcuts" / comp / SCHEME, dst)
-    step("Notepad++ keyboard shortcuts")
+def install_files(kate, state):
+    shortcuts.install(kate, REPO, state)
+    step("Notepad++ keyboard shortcuts  (merged: every other key keeps Kate's default)")
 
     dst = kate.data / "katepart5/script/commands/kate-plusplus.js"
     dst.parent.mkdir(parents=True, exist_ok=True)
@@ -409,7 +404,7 @@ def do_apply(args, first_install=False):
         step("Fresh Kate: nothing to back up yet")
 
     section("Kate")
-    install_files(kate)
+    install_files(kate, state)
     ensure_sessions(kate)
     source = resolve_theme_source(cfg, profile)
     theme_name = build_themes(cfg, kate, source)
@@ -596,7 +591,9 @@ def do_doctor(args):
     (ok if state else bad)(f"Installed: {state.get('version', 'no')}  profile {state.get('profile', '-')}")
     (ok if USER_CONFIG.exists() else meh)(f"Config: {USER_CONFIG}")
     scheme = core.read_rc_value(kate.katerc, "[Shortcut Schemes]", "Current Scheme")
-    (ok if scheme == SCHEME else meh)(f"Shortcut scheme: {scheme or 'Default'}")
+    if scheme and scheme != "Default":
+        bad(f"Shortcut scheme '{scheme}' is active: it can disable normal keys. Run `kate-plusplus apply`")
+    (ok if shortcuts.installed(kate, REPO) else bad)("Notepad++ shortcuts (merged into Kate's defaults)")
     (ok if (kate.data / "katepart5/script/commands/kate-plusplus.js").exists() else bad)("Notepad++ tools script")
     stash = core.read_rc_value(kate.katerc, "[General]", "Stash unsaved file changes") == "true"
     (ok if stash else bad)("Stash (no save prompts, tabs survive restarts)")
@@ -672,8 +669,7 @@ def do_uninstall(args):
     remove_overlay()
     remove_systemd()
     restore_default_editor(state)
-    for comp in SHORTCUT_COMPONENTS:
-        (kate.data / comp / "shortcuts" / SCHEME).unlink(missing_ok=True)
+    shortcuts.uninstall(kate, REPO, state)
     (kate.data / "katepart5/script/commands/kate-plusplus.js").unlink(missing_ok=True)
     for f in (kate.data / "org.kde.syntax-highlighting/themes").glob(f"{APP}-*.theme"):
         f.unlink()
@@ -759,6 +755,7 @@ def main(argv=None):
         s.add_argument("-y", "--yes", action="store_true", help="don't ask questions")
         s.add_argument("--profile", choices=("auto", "caelestia", "generic"))
         s.add_argument("--hotkey", help='notepad overlay key, e.g. "SUPER + J"')
+        s.add_argument("--overlay", action="store_true", help="turn on the pop-up notepad (Caelestia)")
         s.add_argument("--no-overlay", action="store_true")
         s.add_argument("--no-default-editor", action="store_true")
         s.add_argument("--no-backups", action="store_true")
@@ -783,6 +780,8 @@ def main(argv=None):
             overrides[("general", "profile")] = args.profile
         if args.hotkey:
             overrides[("features", "notepad-hotkey")] = args.hotkey
+        if args.overlay or args.hotkey:
+            overrides[("features", "notepad-overlay")] = "true"
         if args.no_overlay:
             overrides[("features", "notepad-overlay")] = "false"
         if args.no_default_editor:

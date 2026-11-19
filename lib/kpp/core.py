@@ -12,7 +12,7 @@ import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION = "1.0.0"
+VERSION = "1.0.1"
 APP = "kate-plusplus"
 REPO = Path(__file__).resolve().parents[2]
 HOME = Path.home()
@@ -174,7 +174,7 @@ def kate_running(kate: Kate) -> bool:
 
 
 def wait_for_kate_closed(kate: Kate, why="change Kate's settings"):
-    if not kate_running(kate):
+    if os.environ.get("KPP_TEST") or not kate_running(kate):
         return
     warn(f"Kate is open. Please close it so Kate++ can {why}.")
     info("Your open tabs are safe: they'll be right there when you reopen it.")
@@ -247,7 +247,7 @@ def installed_font(*families):
 
 DEFAULTS = {
     "general": {"profile": "auto"},
-    "features": {"notepad-overlay": "true", "notepad-hotkey": "SUPER + J",
+    "features": {"notepad-overlay": "false", "notepad-hotkey": "SUPER + J",
                  "default-editor": "true", "backups": "true", "backup-keep-days": "2"},
     "theme": {"source": "auto", "accent": "", "background": "", "syntax-colors": "balanced"},
     "editor": {"font": "auto", "font-size": "11", "line-spacing": "1.15", "minimap": "true"},

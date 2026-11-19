@@ -4,6 +4,25 @@ All notable changes to Kate++ are listed here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [1.0.1] — 2026-11-19
+
+### Fixed
+- **Backspace, Delete, arrows and other keys stopped working** after install. 1.0.0 used a
+  KDE shortcut *scheme*, which replaces every shortcut with the few it lists. Kate++ now
+  merges its Notepad++ shortcuts into Kate's own shortcut files, so only those keys change
+  and your own shortcut customisations are kept. Upgrading cleans up the old scheme.
+- Kate++ no longer tries to hide the menu bar and toolbar (Kate 26 ignores that at startup;
+  Notepad++ has both anyway).
+- Theme: a token colour that would clash with your accent now moves to the most open hue
+  instead of colliding with another token (types and strings could match on gold wallpapers).
+
+### Changed
+- The pop-up notepad hotkey is now **opt-in** (`kate-plusplus install --overlay`).
+- Redesigned FAQ.
+
+### Added
+- Regression test that starts a real Kate and verifies its live shortcuts.
+
 ## [1.0.0] — 2026-11-19
 
 First release.
@@ -25,4 +44,5 @@ First release.
   doctor, update, uninstall.
 - Native and Flatpak Kate support; one-line installer; AUR package.
 
+[1.0.1]: https://github.com/AlexD1508/kate-plusplus/releases/tag/v1.0.1
 [1.0.0]: https://github.com/AlexD1508/kate-plusplus/releases/tag/v1.0.0

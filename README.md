@@ -67,8 +67,8 @@ Unlimited tabs with close buttons, double-click the tab bar for a new file, midd
 </td>
 <td valign="top">
 
-### 🪄 Pop-up notepad <sup>Caelestia</sup>
-On a Caelestia + Hyprland desktop, <kbd>Super</kbd>+<kbd>J</kbd> slides a floating notepad over whatever you're doing, and hides it again. It's always running, with its own remembered tabs.
+### 🪄 Pop-up notepad <sup>Caelestia · opt-in</sup>
+On a Caelestia + Hyprland desktop you can turn on a hotkey (<kbd>Super</kbd>+<kbd>J</kbd> by default) that slides a floating notepad over whatever you're doing, and hides it again, with its own remembered tabs.
 
 </td>
 </tr>
@@ -118,8 +118,9 @@ cd kate-plusplus
 curl -fsSL https://raw.githubusercontent.com/AlexD1508/kate-plusplus/main/install.sh | bash -s -- --no-default-editor
 
   --profile auto|caelestia|generic   force a flavour (default: auto-detect)
-  --hotkey "SUPER + J"               notepad overlay key (Caelestia)
-  --no-overlay                       skip the pop-up notepad
+  --overlay                          turn on the pop-up notepad (Caelestia)
+  --hotkey "SUPER + J"               pop-up notepad key
+  --no-overlay                       turn the pop-up notepad off
   --no-default-editor                don't make Kate open text files
   --no-backups                       no automatic snapshots
   -y, --yes                          don't ask anything
@@ -139,7 +140,7 @@ curl -fsSL https://raw.githubusercontent.com/AlexD1508/kate-plusplus/main/instal
 | Kate as default text editor | ✅ | ✅ |
 | Editor colours | follow your **wallpaper** | follow **KDE Plasma** colours, or Kate++ Dark / Light |
 | Window chrome | Caelestia Qt palette | your system theme |
-| <kbd>Super</kbd>+<kbd>J</kbd> pop-up notepad | ✅ | — |
+| Pop-up notepad hotkey (opt-in) | ✅ | — |
 
 <br>
 
@@ -219,34 +220,79 @@ Kate++ only ever changes the individual settings it manages. Everything else in 
 
 ## ❓ FAQ
 
-<details>
-<summary><b>Is my unsaved text really safe?</b></summary>
+#### Your notes & settings
 
-Kate's built-in <i>stash</i> keeps unsaved tabs and unsaved changes when you close Kate normally. Kate++ adds snapshots every 10 minutes (only when something changed, kept for 2 days by default), so if Kate crashes or the power goes, `kate-plusplus restore` brings them back. Kate's own swap files also recover the text you were typing at the moment of a crash.
+<details>
+<summary>💾&nbsp; <b>Is my unsaved text really safe?</b></summary>
+<br>
+
+> **Yes, three layers deep.**
+> 1. **Stash:** closing Kate keeps every unsaved tab and edit for next time.
+> 2. **Snapshots** every 10 minutes (only when something changed, kept 2 days): `kate-plusplus restore` brings them back after a crash or power cut.
+> 3. **Swap files:** Kate's own recovery for whatever you were typing at that very moment.
+
 </details>
 
 <details>
-<summary><b>Will it mess up my existing Kate setup?</b></summary>
+<summary>🧷&nbsp; <b>Will it mess up my existing Kate setup?</b></summary>
+<br>
 
-Before touching anything, it saves a copy of your Kate settings and a snapshot of your sessions. It merges only its own keys. `kate-plusplus uninstall` puts your original settings back and restores any file associations it changed.
+> **No, and it's fully reversible.**
+> - It backs up your Kate settings and sessions before touching anything.
+> - It changes only the individual settings and shortcuts it manages, nothing else.
+> - `kate-plusplus uninstall` restores your original settings, shortcuts and file associations.
+
+</details>
+
+#### Shortcuts & themes
+
+<details>
+<summary>⌨️&nbsp; <b>Can I change or undo a shortcut?</b></summary>
+<br>
+
+> **Any time, in Kate itself:** <b>Settings → Configure Keyboard Shortcuts</b>.
+> Kate++ only adds the [Notepad++ ones](#%EF%B8%8F-shortcuts) on top of Kate's defaults, and every other key works exactly as before. Your own changes there are kept, even through updates.
+
 </details>
 
 <details>
-<summary><b>Does it work with Flatpak Kate?</b></summary>
+<summary>🎨&nbsp; <b>How do I switch themes?</b></summary>
+<br>
 
-Yes. If there's no native Kate, Kate++ configures the Flatpak `org.kde.kate` instead.
+> **Set `source` in the `[theme]` section of `config.ini`**, then run `kate-plusplus apply`.
+> - `auto` follows your Caelestia wallpaper or KDE Plasma colours.
+> - `dark` / `light` use the built-in Kate++ themes.
+> - Add your own `accent`, `background` or `syntax-colors`. Readability is always kept.
+
+</details>
+
+#### Compatibility
+
+<details>
+<summary>🐧&nbsp; <b>Which systems does it run on?</b></summary>
+<br>
+
+> **Any Linux with Kate 23.08+ and Python 3.9+.** It's tested on Arch / EndeavourOS (Hyprland, Caelestia, KDE Plasma) and Ubuntu. Flatpak Kate (`org.kde.kate`) is used automatically when there's no native Kate.
+
 </details>
 
 <details>
-<summary><b>Can I use Kate's original shortcuts?</b></summary>
+<summary>🪄&nbsp; <b>How do I turn on the pop-up notepad, or change its key?</b></summary>
+<br>
 
-Yes: <b>Settings → Configure Keyboard Shortcuts → Shortcut schemes → Default</b>. Switch back to <b>Notepad++</b> whenever you like.
+> **Caelestia + Hyprland only:** `kate-plusplus install --overlay`, or `--hotkey "SUPER + G"` for another key.
+> Kate++ checks for clashes before binding. Turn it off again with `--no-overlay`.
+
 </details>
 
-<details>
-<summary><b>The pop-up key clashes with something</b></summary>
+#### Something's off?
 
-Kate++ checks for clashes before binding. Pick any free key with `kate-plusplus install --hotkey "SUPER + G"` or edit `notepad-hotkey` in `config.ini`.
+<details>
+<summary>🩺&nbsp; <b>A key, the theme or the hotkey isn't working</b></summary>
+<br>
+
+> **Run `kate-plusplus doctor`.** It checks every part of the setup and tells you what to fix. Still stuck? [Open an issue](https://github.com/AlexD1508/kate-plusplus/issues/new/choose) with its output.
+
 </details>
 
 <br>

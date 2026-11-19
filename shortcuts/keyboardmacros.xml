@@ -1,0 +1,5 @@
+<!-- Kate++ shortcut overrides for the Keyboard Macros plugin (Notepad++: record / play). -->
+<overrides component="keyboardmacros" file="ui.rc">
+  <Action name="keyboardmacros_record" shortcut="Ctrl+Shift+R"/>
+  <Action name="keyboardmacros_play" shortcut="Ctrl+Shift+P"/>
+</overrides>

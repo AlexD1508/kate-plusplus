@@ -1,0 +1,6 @@
+<!-- Kate++ shortcut overrides for Kate's main window (component "kate").
+     Merged into ~/.local/share/kxmlgui5/kate/kateui.rc — only these actions change,
+     every other shortcut keeps Kate's default. -->
+<overrides component="kate" file="kateui.rc">
+  <Action name="file_quit" shortcut=""/>
+</overrides>
