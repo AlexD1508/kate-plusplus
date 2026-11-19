@@ -21,6 +21,10 @@ All notable changes to Kate++ are listed here. The format follows
 - `source` in `config.ini` accepts **any theme by name**, including every theme that ships
   with Kate (`Catppuccin Mocha`, `Dracula`, `Nord`, …). Family names (`rose-pine`,
   `kanagawa`, `everforest`) follow your system's light/dark preference.
+- **Smarter highlighting:** with a language server installed, Kate++ enables semantic
+  highlighting, inlay hints, hover docs, signature help and diagnostics
+  (`[editor] smart-highlighting = true`). `doctor` lists installed language servers with
+  install hints for missing popular ones.
 
 ### Fixed
 - The opt-in pop-up notepad no longer overwrites a `org.kde.kate.desktop` launcher override

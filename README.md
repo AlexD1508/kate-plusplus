@@ -186,6 +186,20 @@ Then `kate-plusplus apply`. With Caelestia or Plasma as the source, the theme re
 
 <br>
 
+#### 🔬 Smarter highlighting
+
+With a language server installed, Kate++ turns on Kate's meaning-aware extras: **semantic highlighting** (parameters, types, constants and functions coloured by what they *are*, not just how they look), **inline hints** (parameter names and inferred types in soft grey), hover docs, signature help and error underlines. Each extra appears only where the server supports it: clangd and rust-analyzer offer all of them, while Kate's default Python server (pylsp) gives completion, hover, signatures and errors but no semantic colours or inline hints. For those in Python, install `basedpyright` and point Kate's *LSP Client → User Server Settings* at it:
+
+```json
+{ "servers": { "python": { "command": ["basedpyright-langserver", "--stdio"] } } }
+```
+
+`kate-plusplus doctor` checks for the servers Kate starts by default (pylsp, clangd, typescript-language-server, rust-analyzer, …) and gives a one-line install hint for missing popular ones. A server you configured yourself, such as basedpyright, isn't detected there. Setting `smart-highlighting = false` under `[editor]` makes Kate++ stop managing these options; it doesn't switch them back off. To disable them, untick them in Kate's *Settings → Configure Kate → LSP Client* after applying.
+
+<sub>Language servers work on saved files (like in VS Code). Unsaved drafts still get regular highlighting, bracket matching, folding and word completion.</sub>
+
+<br>
+
 ## ⌨️ Shortcuts
 
 | Action | Kate++ | Kate default |
