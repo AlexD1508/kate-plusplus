@@ -29,8 +29,8 @@ jobs:
         run: shellcheck install.sh tests/*.sh tools/screenshot-kate.sh
       - name: Notepad++ Tools (JavaScript)
         run: node tests/kate-scripts.test.js kate-scripts/kate-plusplus.js
-      - name: Shortcut schemes are valid XML
-        run: for f in shortcuts/*/Notepad++; do python3 -c "import sys,xml.dom.minidom as m; m.parse(sys.argv[1])" "$f"; done
+      - name: Shortcut overrides are valid XML
+        run: for f in shortcuts/*.xml; do python3 -c "import sys,xml.dom.minidom as m; m.parse(sys.argv[1])" "$f"; done
       - name: Theme engine keeps contrast floors
         run: |
           python3 - <<'PY'
