@@ -66,4 +66,32 @@ run uninstall --yes
 diff -u "$root/katerc.user" "$H/.config/katerc" || die "overwritten user values were not restored exactly"
 pass "uninstall restores each overwritten value exactly"
 
+# --- upgrade from 1.0.x (no per-key records yet): originals come from the pre-install backup ---
+H=$root/upgrade; mkdir -p "$H/.config"
+printf '[General]\nTabbar Tab Limit=5\n\n[KTextEditor Renderer]\nColor Theme=Dracula\n' > "$H/.config/katerc"
+cp "$H/.config/katerc" "$root/katerc.upgrade"
+run install --yes
+python3 - "$H/.local/state/kate-plusplus/state.json" <<'PY'
+import json, sys
+p = sys.argv[1]; s = json.load(open(p)); s.pop("katerc_before", None); json.dump(s, open(p, "w"))
+PY
+run apply --yes                                                        # 1.0.x → this version
+rm "$H/.local/state/kate-plusplus/katerc.before-kate-plusplus"
+run uninstall --yes
+diff -u "$root/katerc.upgrade" "$H/.config/katerc" || die "upgrade recorded Kate++ values instead of the originals"
+pass "upgrade: originals are taken from the pre-install backup"
+
+# --- legacy: no records and no backup → managed settings removed, not falsely 'restored' ---
+H=$root/legacy; mkdir -p "$H/.config"
+run install --yes
+python3 - "$H/.local/state/kate-plusplus/state.json" <<'PY'
+import json, sys
+p = sys.argv[1]; s = json.load(open(p)); s.pop("katerc_before", None); json.dump(s, open(p, "w"))
+PY
+rm -f "$H/.local/state/kate-plusplus/katerc.before-kate-plusplus"
+out=$(env -i HOME="$H" PATH=/usr/bin:/bin KPP_TEST=1 ./bin/kate-plusplus uninstall --yes 2>&1)
+grep -q 'Kate++ settings removed' <<<"$out" || die "legacy uninstall should say settings were removed"
+grep -q '^Tabbar Tab Limit=' "$H/.config/katerc" && die "legacy uninstall left Kate++ settings behind"
+pass "legacy uninstall removes Kate++ settings and says so"
+
 echo "All sandbox tests passed."
