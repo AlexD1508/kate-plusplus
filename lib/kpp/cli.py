@@ -563,11 +563,11 @@ def do_theme(args):
     step(f"{name} regenerated")
     current = core.read_rc_value(kate.katerc, "[KTextEditor Renderer]", "Color Theme")
     if current != name:
+        # Safe while Kate runs: Kate only writes back settings it changed itself.
+        core.merge_rc(kate.katerc, [("[KTextEditor Renderer]", "Auto Color Theme Selection", "false"),
+                                    ("[KTextEditor Renderer]", "Color Theme", name)])
         if core.kate_running(kate):
-            info(f"Restart Kate (or pick {name} in Settings → Configure Kate → Color Themes)")
-        else:
-            core.merge_rc(kate.katerc, [("[KTextEditor Renderer]", "Auto Color Theme Selection", "false"),
-                                        ("[KTextEditor Renderer]", "Color Theme", name)])
+            info(f"Restart Kate to see {name}")
 
 
 # ======================================================================= backups
