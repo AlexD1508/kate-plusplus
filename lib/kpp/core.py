@@ -127,17 +127,40 @@ def run(*cmd, check=False, quiet=True):
 LOCK_FILE = XDG_STATE / f"{APP}.lock"   # outside STATE_DIR, which uninstall removes
 
 
+_lock_depth = 0
+
+
 @contextlib.contextmanager
 def exclusive():
-    """One Kate++ pass at a time between the background job and uninstall (waits)."""
-    import fcntl
-    LOCK_FILE.parent.mkdir(parents=True, exist_ok=True)
-    with open(LOCK_FILE, "a") as f:
-        fcntl.flock(f, fcntl.LOCK_EX)
+    """One Kate++ pass at a time across apply, the background job and uninstall (waits).
+    Re-entrant within one process, e.g. the menu's apply after a config edit."""
+    global _lock_depth
+    if _lock_depth:
+        _lock_depth += 1
         try:
             yield
         finally:
-            fcntl.flock(f, fcntl.LOCK_UN)
+            _lock_depth -= 1
+        return
+    import fcntl
+    while True:
+        LOCK_FILE.parent.mkdir(parents=True, exist_ok=True)
+        f = open(LOCK_FILE, "a")
+        fcntl.flock(f, fcntl.LOCK_EX)
+        try:   # flock locks the open file, not the name: uninstall may have replaced it
+            if os.fstat(f.fileno()).st_ino == os.stat(LOCK_FILE).st_ino:
+                break
+        except FileNotFoundError:
+            pass
+        fcntl.flock(f, fcntl.LOCK_UN)
+        f.close()
+    _lock_depth = 1
+    try:
+        yield
+    finally:
+        _lock_depth = 0
+        fcntl.flock(f, fcntl.LOCK_UN)
+        f.close()
 
 
 def missing_dirs(path: Path) -> list:

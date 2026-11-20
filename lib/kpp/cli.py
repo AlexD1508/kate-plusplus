@@ -888,6 +888,11 @@ def link_cli():
 
 
 def do_apply(args, first_install=False):
+    with core.exclusive():   # the background job can't change records in the middle of an apply
+        return _apply(args, first_install)
+
+
+def _apply(args, first_install=False):
     kate = need_kate()
     state = core.load_state()
     created = core.ensure_user_config()

@@ -825,6 +825,13 @@ with core.exclusive():
     time.sleep(1.5)
     assert p.poll() is None, "second pass didn't wait"
 p.wait(timeout=10)
+# a waiter that locked a lock file uninstall has since removed retries on the current one
+with core.exclusive():
+    p = subprocess.Popen([sys.executable, "-c", "from kpp import core\nwith core.exclusive(): open(core.LOCK_FILE.with_suffix('.got'), 'w')"], env=os.environ)
+    time.sleep(1)
+    core.LOCK_FILE.unlink()
+p.wait(timeout=10)
+assert core.LOCK_FILE.with_suffix(".got").exists() and core.LOCK_FILE.exists(), "waiter didn't retry on the new file"
 PY
 # a failed session write is retried on the next run (the recorded originals aren't "done")
 H=$root/plugins-retry; mkdir -p "$H/.local/share/kate/sessions"
