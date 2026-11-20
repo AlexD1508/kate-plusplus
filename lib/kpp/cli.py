@@ -14,7 +14,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from . import core, formatting, menus, plugins, ports, shortcuts, theme, window
+from . import core, formatting, languages, menus, plugins, ports, shortcuts, theme, window
 from .core import (APP, BACKUP_DIR, BIN_LINK, CAELESTIA_SCHEME, DIM, BOLD, RESET, ACCENT,
                    GREEN, YELLOW, RED, KDEGLOBALS, REPO, STATE_DIR, USER_CONFIG, VERSION,
                    XDG_CONFIG, XDG_DATA, banner, info, section, step, warn, fail, ask, have, run)
@@ -230,11 +230,19 @@ def setup_formatting(cfg, kate, state):
 def language_menu(cfg, kate, *, quiet=False):
     if not cfg.flag("features", "language-menu"):
         menus.remove(kate)
+        languages.remove_script(kate)
         return
-    st = menus.ensure(kate)
+    names = languages.available()   # [] without Kate's syntax tool: Kate's grouped list instead
+    if names:
+        languages.write_script(kate, names)
+    else:
+        languages.remove_script(kate)
+    st = menus.ensure(kate, names)
     if quiet:
         return
-    if st == "present":
+    if st == "present" and names:
+        step(f"Language menu A–Z on the menu bar  ({len(names)} languages, like Notepad++)")
+    elif st == "present":
         step("Language menu on the menu bar  (pick Java, Python, … for any tab)")
     else:
         info("Language menu: appears after Kate's first start (added automatically)")
@@ -1371,6 +1379,7 @@ def _uninstall(args):
     shortcuts.uninstall(kate, REPO, state)
     menus.remove(kate)
     plugins.restore(state)
+    languages.remove_script(kate)
     format_left = formatting.restore(kate, state)
     (kate.data / "katepart5/script/commands/kate-plusplus.js").unlink(missing_ok=True)
     for f in (kate.data / "org.kde.syntax-highlighting/themes").glob(f"{APP}-*.theme"):
