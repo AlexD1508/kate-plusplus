@@ -308,7 +308,8 @@ def managed_keys():
     r = "[KTextEditor Renderer]"
     keys = [(g, k) for g, k, _ in core.read_settings_ini(REPO / "config/kate.ini")]
     return keys + [(r, "Text Font"), (r, "Line Height Multiplier"), (r, "Color Theme"),
-                   (r, "Auto Color Theme Selection"), ("[KTextEditor View]", "Scroll Bar MiniMap")]
+                   (r, "Auto Color Theme Selection"), ("[KTextEditor View]", "Scroll Bar MiniMap"),
+                   ("[General]", "Show Url Nav Bar")]   # in config/kate.ini up to 1.0.x, now from config.ini
     # Keys added later (e.g. [lspclient]) are deliberately not here: versions without per-key
     # records never set them, so the fallback must not delete a user's own values. Their
     # records are trustworthy even on an incomplete legacy upgrade, and the fallback restores them.
@@ -349,11 +350,15 @@ def record_katerc(kate, state, settings):
     state, without changing katerc yet."""
     _init_records(state)
     before = state["katerc_before"]
+    legacy = set(managed_keys())
     new = False
     for group, key, _ in settings:
         k = f"{group}\t{key}"
         if k not in before:
-            source = PRE_INSTALL if PRE_INSTALL.exists() else kate.katerc
+            # keys older versions wrote: the live value may be Kate++'s own, so take the
+            # pre-install backup; keys only newer versions write: the live value is the user's
+            # (possibly changed since the backup was made)
+            source = PRE_INSTALL if PRE_INSTALL.exists() and (group, key) in legacy else kate.katerc
             before[k] = core.read_rc_value(source, group, key)
             new = True
     if new:
@@ -572,10 +577,19 @@ def kate_settings(cfg, kate, theme_name, state):
     except ValueError:
         warn("font-size / line-spacing must be numbers; using 11 / 1.15")
         size, spacing = 11, 1.15
+    crumbs = cfg.get("editor", "breadcrumbs").strip().lower()
+    if crumbs not in ("true", "false", "yes", "no", "on", "off", "1", "0"):
+        warn(f"breadcrumbs = {crumbs} isn't true or false; using true")
+        crumbs = "true"
+    crumbs = str(crumbs in ("true", "yes", "on", "1")).lower()
     settings += [
         (r, "Text Font", f"{font},{size},-1,2,400,0,0,0,0,0,0,0,0,0,0,1"),
         (r, "Line Height Multiplier", f"{spacing:g}"),
         ("[KTextEditor View]", "Scroll Bar MiniMap", str(cfg.flag("editor", "minimap")).lower()),
+        # Breadcrumbs: Kate's navigation bar (folder › file) plus one crumb for the symbol at
+        # the cursor (Kate shows it when a language server provides document symbols)
+        ("[General]", "Show Url Nav Bar", crumbs),
+        ("[General]", "Show Symbol In Navigation Bar", crumbs),
     ]
     if not cfg.flag("editor", "ligatures"):
         settings.append((r, "Text Font Features", NO_LIGATURES))
@@ -869,6 +883,7 @@ def do_apply(args, first_install=False):
     kate = need_kate()
     state = core.load_state()
     created = core.ensure_user_config()
+    new_options = [] if created else core.upgrade_user_config()
     cfg = core.load_config()
     profile = resolve_profile(cfg)
 
@@ -883,6 +898,8 @@ def do_apply(args, first_install=False):
             fail("Nothing changed.", 0)
 
     core.wait_for_kate_closed(kate)
+    if new_options:
+        info(f"New options added to {USER_CONFIG.name}: {', '.join(new_options)}")
 
     section("Safety first")
     if kate.katerc.exists() and not PRE_INSTALL.exists() and not core.load_state():

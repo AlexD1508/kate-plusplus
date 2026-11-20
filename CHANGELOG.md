@@ -46,6 +46,11 @@ All notable changes to Kate++ are listed here. The format follows
   (prettier, ruff, jq, clang-format, shfmt, …). On Kate 24.08, clang-format only reformats
   lines changed since the last Git commit; newer Kate formats the whole file. `doctor` lists
   installed formatters with install hints.
+- **Breadcrumbs:** a slim bar above the text shows folder › file and, when a language server
+  provides symbols, the innermost function or class at the cursor; click a crumb to jump
+  (Kate's navigation bar with the current symbol). `[editor] breadcrumbs = true | false`.
+- `apply` adds options introduced by newer Kate++ versions to an existing `config.ini`
+  (with their comments), so new settings show up in `kate-plusplus config`.
 
 ### Changed
 - Kate's format-on-save (on by default in Kate) is turned off unless you set
