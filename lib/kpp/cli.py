@@ -14,7 +14,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from . import core, formatting, languages, menus, ports, shortcuts, theme, window
+from . import core, formatting, languages, menus, plugins, ports, shortcuts, theme, window
 from .core import (APP, BACKUP_DIR, BIN_LINK, CAELESTIA_SCHEME, DIM, BOLD, RESET, ACCENT,
                    GREEN, YELLOW, RED, KDEGLOBALS, REPO, STATE_DIR, USER_CONFIG, VERSION,
                    XDG_CONFIG, XDG_DATA, banner, info, section, step, warn, fail, ask, have, run)
@@ -332,7 +332,7 @@ def _init_records(state):
     if legacy and PRE_INSTALL.exists():
         # ColorScheme too (window colours write it), but it stays out of managed_keys() so
         # the record-less fallback never deletes a scheme the user picked
-        for group, key in managed_keys() + [(UI, "ColorScheme")]:
+        for group, key in legacy_keys() + [(UI, "ColorScheme")]:   # newer keys: live values
             k = f"{group}\t{key}"
             if k not in records:
                 records[k] = core.read_rc_value(PRE_INSTALL, group, key)
@@ -358,7 +358,7 @@ def record_katerc(kate, state, settings):
     state, without changing katerc yet."""
     _init_records(state)
     before = state["katerc_before"]
-    legacy = set(managed_keys())
+    legacy = set(legacy_keys())
     new = False
     for group, key, _ in settings:
         k = f"{group}\t{key}"
@@ -388,7 +388,15 @@ def restore_katerc(kate, state) -> bool:
 
 # config/kate.ini keys that versions without per-key records never wrote: the record-less
 # fallback must not delete them (a user may have set them), it puts back their records instead
-NEWER_KATE_INI_KEYS = {("[Kate Plugins]", "katesnippetsplugin")}
+NEWER_KATE_INI_KEYS = {("[Kate Plugins]", "katesnippetsplugin"),
+                       ("[General]", "Show text for left and right sidebar")}
+
+
+def legacy_keys():
+    """managed_keys() that older versions already wrote: their originals come from the
+    pre-install backup. Newer keys are recorded from the live katerc (a later change of the
+    user's must survive)."""
+    return [gk for gk in managed_keys() if gk not in NEWER_KATE_INI_KEYS]
 
 
 def remove_managed_katerc(kate, state=None):
@@ -399,7 +407,7 @@ def remove_managed_katerc(kate, state=None):
     no-ligatures value (a later own value stays), and the snippet repository entry is taken
     out by remove_snippets() (list surgery keeps repositories added since)."""
     r = "[KTextEditor Renderer]"
-    legacy = [gk for gk in managed_keys() if gk not in NEWER_KATE_INI_KEYS]
+    legacy = legacy_keys()
     changes = [(g, k, "@delete") for g, k in legacy]
     special = {f"{r}\tText Font Features", f"{SNIPPETS_GROUP}\t{SNIPPETS_KEY}"}
     old_keys = {f"{g}\t{k}" for g, k in legacy} | {f"{UI}\tColorScheme"} | special  # scheme: see do_uninstall
@@ -838,9 +846,10 @@ def setup_systemd(cfg, source):
             warn("No systemd user session: automatic backups are off (run `kate-plusplus backup` yourself)")
         return
     wanted = []
-    if cfg.flag("features", "backups") or cfg.flag("features", "language-menu"):
-        install_unit("kate-plusplus-backup.service", None)
-        wanted.append(install_unit("kate-plusplus-backup.timer", "kate-plusplus-backup.timer"))
+    # always: besides snapshots and the Language menu, the job switches Kate++'s plugins on in
+    # sessions created later (do_maintain does only what's enabled)
+    install_unit("kate-plusplus-backup.service", None)
+    wanted.append(install_unit("kate-plusplus-backup.timer", "kate-plusplus-backup.timer"))
     watch = {"caelestia": CAELESTIA_SCHEME, "plasma": KDEGLOBALS}.get(source)
     if watch:
         install_unit("kate-plusplus-theme.service", None)
@@ -888,6 +897,11 @@ def link_cli():
 
 
 def do_apply(args, first_install=False):
+    with core.exclusive():   # the background job can't change records in the middle of an apply
+        return _apply(args, first_install)
+
+
+def _apply(args, first_install=False):
     kate = need_kate()
     state = core.load_state()
     created = core.ensure_user_config()
@@ -928,6 +942,8 @@ def do_apply(args, first_install=False):
     install_snippets(kate, state)
     setup_formatting(cfg, kate, state)
     ensure_sessions(kate)
+    plugins.enable(REPO, state, session_files(kate))
+    step("Panels: function list, folder, preview, snippets, bookmarks (labelled side buttons)")
     source = resolve_theme_source(cfg, profile)
     theme_name = build_themes(cfg, kate, source)
     kate_settings(cfg, kate, theme_name, state)
@@ -985,27 +1001,39 @@ def do_pick_theme(args):
     if chosen is None:
         info("No change.")
         return
-    core.set_user_config({("theme", "source"): chosen.source})
-    step(f"Theme set to {chosen.label}  {DIM}(source = {chosen.source}){RESET}")
-    args.pick = False
-    do_theme(args)
-    # keep the colour watcher in step with the new source (Caelestia/Plasma follow live changes)
-    cfg = core.load_config()
-    source = resolve_theme_source(cfg, resolve_profile(cfg))
-    quiet, core.QUIET = core.QUIET, True
-    try:
-        setup_systemd(cfg, source)
-    finally:
-        core.QUIET = quiet
-    state = core.load_state()
-    if state:
-        state["theme_source"] = source
-        core.save_state(state)
+    # everything after the (interactive) pick runs under the lock, after the pending check,
+    # so an uninstall that failed while the picker was open can't get new writes
+    with core.exclusive():
+        if core.load_state().get("uninstall_pending"):
+            refuse_pending()
+        core.set_user_config({("theme", "source"): chosen.source})
+        step(f"Theme set to {chosen.label}  {DIM}(source = {chosen.source}){RESET}")
+        args.pick = False
+        do_theme(args)
+        # keep the colour watcher in step with the new source (Caelestia/Plasma follow live changes)
+        cfg = core.load_config()
+        source = resolve_theme_source(cfg, resolve_profile(cfg))
+        quiet, core.QUIET = core.QUIET, True
+        try:
+            setup_systemd(cfg, source)
+        finally:
+            core.QUIET = quiet
+        state = core.load_state()
+        if state:
+            state["theme_source"] = source
+            core.save_state(state)
 
 
 def do_theme(args):
     if getattr(args, "pick", False):
         return do_pick_theme(args)
+    with core.exclusive():   # its state load … save must not interleave with another pass
+        if core.load_state().get("uninstall_pending"):   # re-checked now that we hold the lock
+            refuse_pending()
+        return _theme(args)
+
+
+def _theme(args):
     kate = need_kate()
     cfg = core.load_config()
     profile = resolve_profile(cfg)
@@ -1101,10 +1129,21 @@ def do_maintain(args):
             do_backup(args)
         except Exception as e:  # noqa: BLE001 - background job: report and continue
             warn(f"snapshot failed: {e}")
-    try:
-        language_menu(cfg, kate, quiet=True)
-    except Exception as e:  # noqa: BLE001 - e.g. Kate is rewriting its menu file right now
-        warn(f"Language menu check failed (will retry next run): {e}")
+    with core.exclusive():   # never in the middle of an uninstall
+        if not core.installed(core.load_state()):
+            return               # uninstalled (or unfinished) since this run started
+        try:   # sessions created since the last apply get Kate++'s plugins (Kate must be closed)
+            state = core.load_state()
+            files = session_files(kate)
+            if (not core.kate_running(kate) and plugins.pending(REPO, state, files)
+                    and make_backup(kate, force=True, label="pre-plugins")):   # snapshot first
+                plugins.enable(REPO, state, files)
+        except Exception as e:  # noqa: BLE001 - background job: report and continue
+            warn(f"plugin check failed (will retry next run): {e}")
+        try:
+            language_menu(cfg, kate, quiet=True)
+        except Exception as e:  # noqa: BLE001 - e.g. Kate is rewriting its menu file right now
+            warn(f"Language menu check failed (will retry next run): {e}")
 
 
 def do_backup(args):
@@ -1255,8 +1294,7 @@ def do_doctor(args):
             (ok if bound else meh)(f"Notepad overlay {state['overlay_hotkey']}"
                                    + ("" if bound else " (not bound yet; reload Hyprland)"))
     if core.has_systemd_user():
-        for unit, want in (("kate-plusplus-backup.timer", cfg.flag("features", "backups")
-                            or cfg.flag("features", "language-menu")),
+        for unit, want in (("kate-plusplus-backup.timer", True),   # always installed
                            ("kate-plusplus-theme.path", src in ("caelestia", "plasma"))):
             active = run("systemctl", "--user", "is-active", unit).stdout.strip() == "active"
             if want:
@@ -1328,7 +1366,17 @@ def finish_pending_uninstall(kate, state):
 PENDING_OK = {"uninstall", "install", "apply", "update", "doctor", "backup"}
 
 
+def refuse_pending():
+    fail("An earlier uninstall couldn't finish. Run `kate-plusplus uninstall` again to finish it,\n"
+         "  or `kate-plusplus apply` to set Kate++ up again.")
+
+
 def do_uninstall(args):
+    with core.exclusive():   # waits for a running background pass, and keeps the next one out
+        return _uninstall(args)
+
+
+def _uninstall(args):
     kate = need_kate()
     banner("Uninstall")
     if not args.yes and not ask("Remove Kate++ from this account? Your notes and tabs stay."):
@@ -1344,6 +1392,7 @@ def do_uninstall(args):
     restore_default_editor(state)
     shortcuts.uninstall(kate, REPO, state)
     menus.remove(kate)
+    plugins.restore(state)
     languages.remove_script(kate)
     format_left = formatting.restore(kate, state)
     (kate.data / "katepart5/script/commands/kate-plusplus.js").unlink(missing_ok=True)
@@ -1356,6 +1405,13 @@ def do_uninstall(args):
     repos_now = core.read_rc_value(kate.katerc, SNIPPETS_GROUP, SNIPPETS_KEY)
     if PRE_INSTALL.exists() and (args.yes or ask("Put your Kate settings back to how they were before Kate++?")):
         shutil.copy2(PRE_INSTALL, kate.katerc)
+        # keys only newer versions write were recorded from the live katerc, which may be newer
+        # than the backup (a value set after installing 1.0.x): put those records back on top
+        records = state.get("katerc_before", {})
+        newer = [(g, k, "@delete" if records[f"{g}\t{k}"] is None else records[f"{g}\t{k}"])
+                 for g, k in sorted(NEWER_KATE_INI_KEYS) if f"{g}\t{k}" in records]
+        if newer:
+            core.merge_rc(kate.katerc, newer)
         step("Original Kate settings restored")
     elif restore_katerc(kate, state):  # exactly what each key was before Kate++
         step("Your previous Kate settings restored")
@@ -1493,8 +1549,7 @@ def main(argv=None):
     if core.load_state().get("uninstall_pending") and not (
             args.cmd in PENDING_OK or (args.cmd == "config" and args.print)):
         # an unfinished uninstall: a write now would get records the retry doesn't undo
-        fail("An earlier uninstall couldn't finish. Run `kate-plusplus uninstall` again to finish it,\n"
-             "  or `kate-plusplus apply` to set Kate++ up again.")
+        refuse_pending()
 
     handlers = {"theme": do_theme, "backup": do_backup, "maintain": do_maintain, "restore": do_restore, "doctor": do_doctor,
                 "update": do_update, "uninstall": do_uninstall, "config": do_config}

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import configparser
+import contextlib
 import json
 import os
 import re
@@ -121,6 +122,37 @@ def run(*cmd, check=False, quiet=True):
                               stderr=subprocess.PIPE if quiet else None)
     except FileNotFoundError:
         return subprocess.CompletedProcess(cmd, 127, "", "")
+
+
+_lock_depth = 0
+
+
+@contextlib.contextmanager
+def exclusive():
+    """One Kate++ pass at a time across apply, theme, the background job and uninstall (waits).
+    It locks the XDG state folder itself (~/.local/state), so there is no lock file to create
+    or to clean up, and uninstall can't leave one behind. Re-entrant within one process."""
+    global _lock_depth
+    if _lock_depth:
+        _lock_depth += 1
+        try:
+            yield
+        finally:
+            _lock_depth -= 1
+        return
+    import fcntl
+    XDG_STATE.mkdir(parents=True, exist_ok=True)   # the standard XDG folder, never removed
+    fd = os.open(XDG_STATE, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        _lock_depth = 1
+        try:
+            yield
+        finally:
+            _lock_depth = 0
+            fcntl.flock(fd, fcntl.LOCK_UN)
+    finally:
+        os.close(fd)
 
 
 def missing_dirs(path: Path) -> list:

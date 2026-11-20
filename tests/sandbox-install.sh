@@ -394,7 +394,7 @@ env -i HOME="$H" PATH=/usr/bin:/bin KPP_TEST=1 PYTHONPATH=lib python3 - "$H/.loc
 import json, sys
 from kpp import cli, core
 p = sys.argv[1]; s = json.load(open(p)); records = s.pop("katerc_before")
-legacy = {f"{g}\t{k}" for g, k in cli.managed_keys()}
+legacy = {f"{g}\t{k}" for g, k in cli.legacy_keys()}   # what 1.0.x wrote
 core.merge_rc(core.XDG_CONFIG / "katerc", [(*rec.split("\t", 1), "@delete" if old is None else old)
                             for rec, old in records.items() if rec not in legacy])
 json.dump(s, open(p, "w"))
@@ -805,5 +805,106 @@ grep -q '^ColorScheme=Solarized$' "$H/.config/katerc" || die "upgrade replaced a
 run uninstall --yes
 grep -q '^ColorScheme=Solarized$' "$H/.config/katerc" || die "uninstall lost the user's scheme"
 pass "upgrade without backup keeps the user's window scheme through uninstall"
+
+# --- plugins live in the session files: switched on once, a later "off" stays, restored exactly ---
+H=$root/plugins; S=$H/.local/share/kate/sessions; mkdir -p "$H/.config" "$S"
+printf '[Kate Plugins]\nkatesnippetsplugin=false\nkatefiletreeplugin=true\n\n[MainWindow0]\nKate-MDI-Sidebar-Visible=true\n' > "$S/Mine.katesession"
+cp "$S/Mine.katesession" "$root/plugins.orig"
+run install --yes
+for f in "$S/Mine.katesession" "$S/Notepad.katesession"; do
+    for p in katesymbolviewerplugin katefilebrowserplugin ktexteditorpreviewplugin katesnippetsplugin formatplugin; do
+        grep -qx "$p=true" "$f" || die "$p not switched on in $(basename "$f")"
+    done
+done
+sed -i 's/^ktexteditorpreviewplugin=true$/ktexteditorpreviewplugin=false/' "$S/Mine.katesession"   # you turn Preview off in Kate
+run apply --yes
+grep -qx 'ktexteditorpreviewplugin=false' "$S/Mine.katesession" || die "apply switched a plugin back on that the user turned off"
+grep -qx 'Show text for left and right sidebar=true' "$H/.config/katerc" || die "side-panel labels not switched on"
+run uninstall --yes
+python3 - "$root/plugins.orig" "$S/Mine.katesession" <<'PY' || die "session plugin settings not restored"
+import sys, configparser
+def plugins(f):
+    c = configparser.RawConfigParser(strict=False); c.optionxform = str; c.read(f)
+    return dict(c["Kate Plugins"]) if c.has_section("Kate Plugins") else {}
+a, b = plugins(sys.argv[1]), plugins(sys.argv[2])
+assert b == {**a, "ktexteditorpreviewplugin": "false"}, (a, b)   # your later "off" stays
+PY
+grep -q '^Show text for left and right sidebar' "$H/.config/katerc" && die "uninstall left the side-panel labels setting"
+[[ -n $(find "$H/.local/state" -maxdepth 1 -name '*kate-plusplus*' -print -quit) ]] && die "uninstall left Kate++ files in ~/.local/state"
+# newer kate.ini keys are recorded from the live katerc, even when a pre-install backup exists
+H=$root/newer-keys; mkdir -p "$H/.config" "$H/.local/state/kate-plusplus"
+printf '[General]\nShow text for left and right sidebar=false\n' > "$H/.config/katerc"
+printf '[General]\nRecent Files Count=10\n' > "$H/.local/state/kate-plusplus/katerc.before-kate-plusplus"
+echo '{"version": "1.0.1"}' > "$H/.local/state/kate-plusplus/state.json"
+env -i HOME="$H" PATH=/usr/bin:/bin KPP_TEST=1 PYTHONPATH=lib python3 - <<'PY' || die "a newer key was recorded from the pre-install backup"
+from kpp import cli
+state = {"version": "1.0.1"}
+cli._init_records(state)
+cli.record_katerc(cli.core.detect_kate(), state, [("[General]", "Show text for left and right sidebar", "true")])
+rec = state["katerc_before"]["[General]\tShow text for left and right sidebar"]
+assert rec == "false", rec
+PY
+# the background job waits for a running uninstall (shared lock) and then stays out
+env -i HOME="$H" PATH=/usr/bin:/bin KPP_TEST=1 PYTHONPATH=lib python3 - <<'PY' || die "background job didn't wait for the lock"
+import subprocess, sys, time, os
+from kpp import core
+with core.exclusive():
+    t = time.time()
+    p = subprocess.Popen([sys.executable, "-c", "from kpp import core\nwith core.exclusive(): pass"], env=os.environ)
+    time.sleep(1.5)
+    assert p.poll() is None, "second pass didn't wait"
+    q = subprocess.Popen([sys.executable, "bin/kate-plusplus", "theme"], env=os.environ,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    time.sleep(1.5)
+    assert q.poll() is None, "theme didn't wait for the lock"
+p.wait(timeout=10)
+q.wait(timeout=60)
+# an uninstall that became unfinished while theme waited: theme must notice it under the lock
+with core.exclusive():
+    q = subprocess.Popen([sys.executable, "-c", "import sys; sys.argv=['kate-plusplus','theme']\nfrom kpp import cli\ncli.do_theme(type('A',(),{'pick':False})())"],
+                         env=os.environ, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    time.sleep(1.5)
+    assert q.poll() is None, "theme didn't wait for the lock"
+    st = core.load_state(); st["uninstall_pending"] = True; core.save_state(st)   # fails meanwhile
+out = q.communicate(timeout=60)[0]
+assert q.returncode != 0 and "uninstall couldn't finish" in out, ("theme ran although the uninstall was unfinished", out)
+st.pop("uninstall_pending"); core.save_state(st)
+PY
+# a failed session write is retried on the next run (the recorded originals aren't "done")
+H=$root/plugins-retry; mkdir -p "$H/.local/share/kate/sessions"
+printf '[Kate Plugins]\nkatesnippetsplugin=false\n' > "$H/.local/share/kate/sessions/R.katesession"
+env -i HOME="$H" PATH=/usr/bin:/bin KPP_TEST=1 PYTHONPATH=lib python3 - <<'PY' || die "a failed plugin write was not retried"
+from pathlib import Path
+from kpp import core, plugins
+f = Path(core.HOME) / ".local/share/kate/sessions/R.katesession"
+state, real = {}, core.merge_rc
+def broken(*a, **k):
+    raise OSError("disk full")
+core.merge_rc = broken
+try:
+    plugins.enable(core.REPO, state, [f])
+except OSError:
+    pass
+core.merge_rc = real
+assert plugins.pending(core.REPO, state, [f]), "failed write counted as done"
+plugins.enable(core.REPO, state, [f])
+assert core.read_rc_value(f, "[Kate Plugins]", "katesnippetsplugin") == "true"
+assert state["plugins_before"][str(f)]["katesnippetsplugin"] == "false", "original baseline lost"
+assert not plugins.pending(core.REPO, state, [f])
+PY
+# the full-backup uninstall path keeps a newer key's live value from before the upgrade
+H=$root/newer-backup; mkdir -p "$H/.config"
+printf '[General]\nRecent Files Count=10\n' > "$H/.config/katerc"
+run install --yes                                       # the backup has no sidebar-label key
+python3 - "$H/.local/state/kate-plusplus/state.json" <<'PY'
+import json, sys   # as if the user had set the key to false before upgrading to this version
+p = sys.argv[1]; s = json.load(open(p))
+s["katerc_before"]["[General]\tShow text for left and right sidebar"] = "false"; json.dump(s, open(p, "w"))
+PY
+run uninstall --yes                                      # --yes: restores the full backup
+grep -qx 'Show text for left and right sidebar=false' "$H/.config/katerc" \
+    || die "full-backup uninstall lost a newer key's recorded value"
+grep -qx 'Recent Files Count=10' "$H/.config/katerc" || die "full-backup uninstall lost the backup"
+pass "plugins switched on per session (once), a later off stays, a failed write is retried, uninstall restores them"
 
 echo "All sandbox tests passed."

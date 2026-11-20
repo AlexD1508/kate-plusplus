@@ -63,6 +63,13 @@ All notable changes to Kate++ are listed here. The format follows
   Kate++ warns and leaves the setting alone, so formatting may still run on save.
 
 ### Fixed
+- **Plugins Kate++ promises now really load:** Function list, Folder browser, Markdown preview,
+  Snippets, Macros, Bookmarks, colour swatches, rainbow brackets and the Format plugin. Kate
+  reads which plugins are on from each *session* file, not from `katerc`, so they never
+  loaded. Kate++ now switches them on in every session once (a plugin you turn off later
+  stays off) and uninstall puts back what was there. The side-panel buttons show their names.
+  The 10-minute background job is now always installed, because it also switches the plugins
+  on in sessions you create later (snapshots and the Language menu still follow their options).
 - The opt-in pop-up notepad no longer overwrites a `org.kde.kate.desktop` launcher override
   you made yourself (uninstall used to delete it afterwards).
 - Uninstall now restores **exactly** the value each Kate setting had before Kate++, even
