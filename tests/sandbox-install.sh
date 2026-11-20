@@ -956,7 +956,8 @@ XML
 cp "$FP" "$root/button.orig"
 run install --yes
 grep -Eq '<Action (name="format_document" kate-plusplus="true"|kate-plusplus="true" name="format_document")/>' "$FP" || die "Prettify button not added to the toolbar"
-grep -q 'text="Prettify"' "$FP" && grep -q 'icon="tools-wizard"' "$FP" || die "Prettify button has no name/icon"
+grep -q 'text="Prettify"' "$FP" || die "Prettify button has no name"
+grep -q 'icon="tools-wizard"' "$FP" || die "Prettify button has no icon"
 before=$(md5sum "$FP"); run apply --yes
 [[ $(md5sum "$FP") == "$before" ]] || die "re-apply rewrote an unchanged plugin GUI file"
 sed -i 's/^prettify-button = true/prettify-button = false/' "$H/.config/kate-plusplus/config.ini"
