@@ -291,7 +291,8 @@ sed -i 's|  <Menu name="settings">|  <Action name="tools_highlighting" kate-plus
 run install --yes
 UI=$H/.local/share/kxmlgui5/katepart/katepart5ui.rc
 LJS=$H/.local/share/katepart5/script/commands/kate-plusplus-languages.js
-if command -v ksyntaxhighlighter6 >/dev/null || command -v ksyntaxhighlighter5 >/dev/null; then
+# the same lister lookup Kate++ uses (incl. kate-syntax-highlighter), with the CLI's PATH
+if [[ $(env -i HOME="$H" PATH=/usr/bin:/bin PYTHONPATH=lib python3 -c 'from kpp import languages; print("az" if languages.available() else "grouped")') == az ]]; then
     python3 - "$UI" <<'PY' || die "A–Z Language menu not built"
 import sys, xml.dom.minidom as m
 root = m.parse(sys.argv[1]).documentElement

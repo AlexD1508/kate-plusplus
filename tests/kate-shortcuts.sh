@@ -70,11 +70,8 @@ kpp maintain --quiet
 UI=$H/.local/share/kxmlgui5/katepart/katepart5ui.rc
 grep -q 'kate-plusplus="true"' "$UI" || die "Language menu was not added to the menu bar"
 read_shortcuts file_close >/dev/null    # Kate starts again with the menu in place
-if command -v ksyntaxhighlighter6 >/dev/null || command -v ksyntaxhighlighter5 >/dev/null; then
-    WANT=az
-else
-    WANT=grouped
-fi
+# the same lister lookup Kate++ uses (incl. kate-syntax-highlighter), with the CLI's PATH
+WANT=$(env -i HOME="$H" PATH=/usr/bin:/bin PYTHONPATH=lib python3 -c 'from kpp import languages; print("az" if languages.available() else "grouped")')
 python3 - "$UI" "$WANT" <<'PY' || die "Kate dropped the Language menu"
 import sys, xml.dom.minidom as m
 root = m.parse(sys.argv[1]).documentElement
