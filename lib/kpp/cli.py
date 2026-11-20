@@ -902,10 +902,12 @@ def do_apply(args, first_install=False):
         info(f"New options added to {USER_CONFIG.name}: {', '.join(new_options)}")
 
     section("Safety first")
-    if kate.katerc.exists() and not PRE_INSTALL.exists() and not core.load_state():
+    if kate.katerc.exists() and not PRE_INSTALL.exists() and not core.installed(core.load_state()):
         PRE_INSTALL.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(kate.katerc, PRE_INSTALL)
         step(f"Original Kate settings saved  {DIM}{PRE_INSTALL}{RESET}")
+    if state.pop("uninstall_pending", None):   # installed again: the next uninstall is a full one
+        core.save_state(state)                 # (format_before keeps the original baselines)
     snap = make_backup(kate, force=True, label="pre-apply")
     if snap:
         step(f"Snapshot of sessions & tabs   {DIM}{snap.name}{RESET}")
@@ -1466,7 +1468,7 @@ def main(argv=None):
             overrides[("features", "backups")] = "false"
         if overrides:
             core.ensure_user_config(overrides)
-        first = args.cmd == "install" and not core.load_state()
+        first = args.cmd == "install" and not core.installed(core.load_state())
         return do_apply(args, first_install=first)
 
     handlers = {"theme": do_theme, "backup": do_backup, "maintain": do_maintain, "restore": do_restore, "doctor": do_doctor,

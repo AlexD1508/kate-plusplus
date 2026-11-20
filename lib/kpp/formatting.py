@@ -51,9 +51,9 @@ def settings_path(kate):
     configPath, which Kate resolves against whatever directory it was started from."""
     custom = (core.read_rc_value(kate.katerc, "[kateformatplugin]", "configPath")
               if _kate_at_least(kate, CONFIG_PATH_MIN_KATE) else None)
-    if custom and not Path(custom).expanduser().is_absolute():
-        return None   # Kate reads it relative to its own working directory: unknowable here
-    path = Path(custom).expanduser() if custom else kate.config / "kate" / "formatting" / "settings.json"
+    if custom and not Path(custom).is_absolute():
+        return None   # Kate takes it literally (no ~ expansion), relative to its working directory
+    path = Path(custom) if custom else kate.config / "kate" / "formatting" / "settings.json"
     return _canonical(path)
 
 
@@ -78,6 +78,11 @@ def _without_key(data):
     return {k: v for k, v in data.items() if k != "formatOnSave"}
 
 
+def _same(a, b) -> bool:
+    """Equal apart from formatOnSave, type-sensitively (1 and true differ in JSON)."""
+    return json.dumps(_without_key(a), sort_keys=True) == json.dumps(_without_key(b), sort_keys=True)
+
+
 def _records(state):
     """Restore records, one per settings file Kate++ has changed: {path: record}."""
     rec = state.setdefault("format_before", {})
@@ -98,7 +103,7 @@ def set_format_on_save(kate, state, enabled: bool):
         return
     try:
         text = path.read_text(encoding="utf-8") if path.exists() else None
-    except OSError:
+    except (OSError, UnicodeError):
         text = None
     data = {} if not path.exists() else _parse(text)
     if data is None:
@@ -142,7 +147,7 @@ def _restore_one(path, before):
     original = before.get("text")
     if before["existed"] and original is not None:
         orig_data = _parse(original)
-        if orig_data is not None and _without_key(orig_data) == _without_key(data):
+        if orig_data is not None and _same(orig_data, data):
             core.atomic_write(path, original)   # untouched since: the exact original bytes
             return
     if before["had_key"]:

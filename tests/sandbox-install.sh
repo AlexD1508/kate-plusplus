@@ -512,9 +512,22 @@ if [[ $EUID -ne 0 ]]; then
     chmod 644 "$f"
     grep -q "format-on-save setting couldn't be put back" <<<"$out" || die "unreadable formatting settings weren't reported"
     grep -q "$f" "$H/.local/state/kate-plusplus/state.json" || die "record of an unrestored formatting file was deleted"
+    [[ $(stat -c %a "$H/.local/state/kate-plusplus/state.json") == 600 ]] || die "state.json (holding a settings copy) isn't owner-only"
     run uninstall --yes
     cmp -s "$root/format.orig" "$f" || die "retrying uninstall didn't restore the formatting settings"
     [[ -e $H/.local/state/kate-plusplus ]] && die "state left behind after a complete uninstall"
+    # apply in between: the next uninstall must be a full one again
+    cp "$root/format.orig" "$f"; cp "$H/.config/katerc" "$root/format.katerc"
+    run install --yes; chmod 000 "$f"
+    env -i HOME="$H" PATH=/usr/bin:/bin KPP_TEST=1 ./bin/kate-plusplus uninstall --yes >/dev/null 2>&1 || true
+    chmod 644 "$f"
+    run apply --yes
+    grep -q uninstall_pending "$H/.local/state/kate-plusplus/state.json" && die "apply kept the pending-uninstall marker"
+    run uninstall --yes
+    cmp -s "$root/format.orig" "$f" || die "formatting settings not restored after uninstall → apply → uninstall"
+    [[ -e $H/.local/share/kxmlgui5/formatplugin/ui.rc ]] && die "uninstall after a re-apply left the Prettify shortcut behind"
+    grep -q '^Tabbar Tab Limit=' "$H/.config/katerc" && die "uninstall after a re-apply left Kate++ settings in katerc"
+    [[ -e $H/.local/state/kate-plusplus ]] && die "state left behind after uninstall → apply → uninstall"
 fi
 pass "formatting settings restored byte for byte, later edits kept, unreadable file retried"
 H=$root/format2; mkdir -p "$H/.config"

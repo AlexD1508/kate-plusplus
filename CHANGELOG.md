@@ -55,8 +55,8 @@ All notable changes to Kate++ are listed here. The format follows
 ### Changed
 - Kate's format-on-save (on by default in Kate) is turned off unless you set
   `[editor] format-on-save = true`; uninstall restores your previous setting exactly. If the
-  Format plugin's `configPath` is a relative path, Kate++ warns and leaves the setting alone,
-  so formatting may still run on save.
+  Format plugin's `configPath` is a relative path (Kate doesn't expand `~` there either),
+  Kate++ warns and leaves the setting alone, so formatting may still run on save.
 
 ### Fixed
 - The opt-in pop-up notepad no longer overwrites a `org.kde.kate.desktop` launcher override

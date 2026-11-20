@@ -465,7 +465,13 @@ def load_state() -> dict:
 
 
 def save_state(state: dict):
-    atomic_write(STATE_FILE, json.dumps(state, indent=2) + "\n", 0o644)
+    # owner-only: it can hold copies of private settings (e.g. a 0600 formatting file)
+    atomic_write(STATE_FILE, json.dumps(state, indent=2) + "\n", 0o600)
+
+
+def installed(state: dict) -> bool:
+    """A Kate++ install is recorded, not just the leftovers of an interrupted uninstall."""
+    return bool(state) and not state.get("uninstall_pending")
 
 
 # ----------------------------------------------------------------- KConfig rc files
