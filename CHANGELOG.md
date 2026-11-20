@@ -6,6 +6,10 @@ All notable changes to Kate++ are listed here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- AUR package: 1.1.0, and it suggests the main Prettify formatters (jq, prettier, ruff,
+  shfmt) as optional dependencies.
+
 ## [1.1.0] — 2026-11-20
 
 ### Added
