@@ -490,15 +490,33 @@ grep -q '^Tabbar Tab Limit=' "$H/.config/katerc" && die "partial legacy uninstal
 pass "partial legacy records fall back to removing Kate++ settings"
 # --- prettify: format-on-save off by default, your own settings.json restored on uninstall ---
 H=$root/format; mkdir -p "$H/.config/kate/formatting"
-printf '{\n    "formatterForPython": "black",\n    "formatOnSave": true\n}\n' > "$H/.config/kate/formatting/settings.json"
+printf '{"formatterForPython":  "black",\n  "formatOnSave":true }' > "$H/.config/kate/formatting/settings.json"   # odd spacing, no final newline
 cp "$H/.config/kate/formatting/settings.json" "$root/format.orig"
 run install --yes
 python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d["formatOnSave"] is False and d["formatterForPython"] == "black", d' \
     "$H/.config/kate/formatting/settings.json" || die "format-on-save not turned off (or user keys lost)"
 grep -q 'name="format_document" shortcut="Ctrl+Alt+Shift+B"' "$H/.local/share/kxmlgui5/formatplugin/ui.rc" || die "format shortcut missing"
 run uninstall --yes
-python3 -c 'import json,sys; a,b=(json.load(open(f)) for f in sys.argv[1:]); assert a == b, (a, b)' \
-    "$root/format.orig" "$H/.config/kate/formatting/settings.json" || die "formatting settings not restored"
+cmp -s "$root/format.orig" "$H/.config/kate/formatting/settings.json" || die "formatting settings not restored byte for byte"
+# an edit you made after install survives: only formatOnSave is put back
+run install --yes
+f=$H/.config/kate/formatting/settings.json
+python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); d["formatterForJson"]="prettier"; json.dump(d, open(sys.argv[1], "w"))' "$f"
+run uninstall --yes
+python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d == {"formatterForPython": "black", "formatOnSave": True, "formatterForJson": "prettier"}, d' "$f" \
+    || die "a later edit to the formatting settings was lost on uninstall"
+# a settings file uninstall can't read keeps its record, and a second uninstall finishes the job
+if [[ $EUID -ne 0 ]]; then
+    cp "$root/format.orig" "$f"; run install --yes; chmod 000 "$f"
+    out=$(env -i HOME="$H" PATH=/usr/bin:/bin KPP_TEST=1 ./bin/kate-plusplus uninstall --yes 2>&1)
+    chmod 644 "$f"
+    grep -q "format-on-save setting couldn't be put back" <<<"$out" || die "unreadable formatting settings weren't reported"
+    grep -q "$f" "$H/.local/state/kate-plusplus/state.json" || die "record of an unrestored formatting file was deleted"
+    run uninstall --yes
+    cmp -s "$root/format.orig" "$f" || die "retrying uninstall didn't restore the formatting settings"
+    [[ -e $H/.local/state/kate-plusplus ]] && die "state left behind after a complete uninstall"
+fi
+pass "formatting settings restored byte for byte, later edits kept, unreadable file retried"
 H=$root/format2; mkdir -p "$H/.config"
 run install --yes; run uninstall --yes
 [[ -e $H/.config/kate/formatting/settings.json ]] && die "uninstall left a formatting settings file Kate++ created"

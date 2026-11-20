@@ -1302,6 +1302,17 @@ def do_update(args):
     os.execv(sys.executable, [sys.executable, str(REPO / "bin" / APP), "apply", "--yes"])
 
 
+def finish_pending_uninstall(kate, state):
+    left = formatting.restore(kate, state)
+    if left:
+        core.save_state(state)
+        fail("Still couldn't put back Kate's format-on-save setting in: " + ", ".join(left))
+    shutil.rmtree(STATE_DIR, ignore_errors=True)
+    if BIN_LINK.is_symlink():
+        BIN_LINK.unlink()
+    step("Kate's format-on-save setting restored; Kate++ removed")
+
+
 def do_uninstall(args):
     kate = need_kate()
     banner("Uninstall")
@@ -1309,13 +1320,16 @@ def do_uninstall(args):
         fail("Nothing changed.", 0)
     core.wait_for_kate_closed(kate)
     state = core.load_state()
+    if state.get("uninstall_pending"):   # an earlier uninstall left only these files to restore
+        finish_pending_uninstall(kate, state)
+        return
     snap = make_backup(kate, force=True, label="before-uninstall")
     remove_overlay()
     remove_systemd()
     restore_default_editor(state)
     shortcuts.uninstall(kate, REPO, state)
     menus.remove(kate)
-    formatting.restore(kate, state)
+    format_left = formatting.restore(kate, state)
     (kate.data / "katepart5/script/commands/kate-plusplus.js").unlink(missing_ok=True)
     for f in (kate.data / "org.kde.syntax-highlighting/themes").glob(f"{APP}-*.theme"):
         f.unlink()
@@ -1338,7 +1352,11 @@ def do_uninstall(args):
     core.merge_rc(kate.katerc, [(SNIPPETS_GROUP, SNIPPETS_KEY, "@delete" if repos_now is None else repos_now)])
     remove_snippets(kate, state)   # after any katerc restore, so a restored file can't re-enable it
     shutil.rmtree(STATE_DIR, ignore_errors=True)
-    if BIN_LINK.is_symlink():
+    if format_left:   # keep just those records (and the command), so a later uninstall can retry
+        core.save_state({"format_before": state["format_before"], "uninstall_pending": True})
+        warn("Kate's format-on-save setting couldn't be put back in: " + ", ".join(format_left)
+             + "\n  Fix access to that file and run `kate-plusplus uninstall` again.")
+    elif BIN_LINK.is_symlink():
         BIN_LINK.unlink()
     step("Kate++ removed")
     info(f"Kept: your sessions & tabs, {USER_CONFIG.parent} and snapshots in {BACKUP_DIR}")
