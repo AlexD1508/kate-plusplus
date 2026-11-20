@@ -20,7 +20,8 @@ from . import core, languages as langs
 ACTION = "tools_highlighting"
 MARK = "kate-plusplus"            # on elements Kate++ created
 ORIG = "kate-plusplus-orig-text"  # on a user's element Kate++ relabelled: its previous text
-LABEL = "&Language"              # Kate's grouped list when it is the whole menu
+LABEL = "La&nguage"              # Kate's grouped list when it is the whole menu (Alt+N:
+                                 # "LSP Client" already uses Alt+L)
 ALL_LABEL = "All Languages"       # … and when it is the last entry of the A–Z menu
 MENU = "kpp_language"             # the A–Z menu element
 
@@ -38,7 +39,7 @@ def _menubar(doc):
 
 def _save(path, doc):
     text = doc.toprettyxml(indent=" ")
-    core.atomic_write(path, "\n".join(l for l in text.splitlines() if l.strip()) + "\n", 0o644)
+    core.atomic_write(path.resolve(), "\n".join(l for l in text.splitlines() if l.strip()) + "\n")   # symlinks stay
 
 
 def _top_entries(bar):
@@ -85,7 +86,7 @@ def _el(doc, tag, name=None, text=None):
 
 
 def _az_menu(doc, languages):
-    menu = _el(doc, "Menu", MENU, "&Language")
+    menu = _el(doc, "Menu", MENU, LABEL)
     menu.setAttribute(MARK, "true")
     for letter, names in langs.groups(languages):
         if len(names) == 1:                     # like Notepad++: a lone language sits directly

@@ -6,13 +6,30 @@ All notable changes to Kate++ are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Prettify button** on the toolbar, next to Undo / Redo (same as Ctrl+Alt+Shift+B). Kate++
+  adds it to the Format plugin's toolbar section once Kate has written that plugin's GUI
+  file (first start); `[features] prettify-button = false` turns it off. `doctor` checks it.
+
 ### Changed
+
+- Side-panel buttons show **icons only** again: the text labels 1.1.0 added were hard to read.
+  `apply` puts back what you had before 1.1.0 (or keeps a value you changed since).
+- The Language menu opens with <kbd>Alt</kbd>+<kbd>N</kbd>: <kbd>Alt</kbd>+<kbd>L</kbd> already belongs to
+  *LSP Client*.
 - AUR package: 1.1.0, and it suggests the main Prettify formatters (jq, prettier, ruff,
   shfmt) as optional dependencies.
+
+### Fixed
+
+- Uninstall also removes the empty shortcut section Kate++ added to an existing Kate GUI
+  file, so the file comes back exactly as it was.
 
 ## [1.1.0] — 2026-11-20
 
 ### Added
+
 - **Language menu** on the menu bar, like Notepad++: A–Z submenus (hover **J** for Java,
   JavaScript, JSON, …) with every language Kate knows, and Kate's grouped list as *All
   Languages* at the bottom. Works for any tab, including unsaved drafts. The list comes from
@@ -63,6 +80,7 @@ All notable changes to Kate++ are listed here. The format follows
   (with their comments), so new settings show up in `kate-plusplus config`.
 
 ### Changed
+
 - README: new screenshots and animations (stock → Kate++, a theme tour, the A–Z Language
   menu and Prettify), shot with real, sandboxed Kate windows by `tools/readme-media.py`.
 - Kate's format-on-save (on by default in Kate) is turned off unless you set
@@ -71,6 +89,7 @@ All notable changes to Kate++ are listed here. The format follows
   Kate++ warns and leaves the setting alone, so formatting may still run on save.
 
 ### Fixed
+
 - **Plugins Kate++ promises now really load:** Function list, Folder browser, Markdown preview,
   Snippets, Macros, Bookmarks, colour swatches, rainbow brackets and the Format plugin. Kate
   reads which plugins are on from each *session* file, not from `katerc`, so they never
@@ -88,6 +107,7 @@ All notable changes to Kate++ are listed here. The format follows
 ## [1.0.1] — 2026-11-19
 
 ### Fixed
+
 - **Backspace, Delete, arrows and other keys stopped working** after install. 1.0.0 used a
   KDE shortcut *scheme*, which replaces every shortcut with the few it lists. Kate++ now
   merges its Notepad++ shortcuts into Kate's own shortcut files, so only those keys change
@@ -98,10 +118,12 @@ All notable changes to Kate++ are listed here. The format follows
   instead of colliding with another token (types and strings could match on gold wallpapers).
 
 ### Changed
+
 - The pop-up notepad hotkey is now **opt-in** (`kate-plusplus install --overlay`).
 - Redesigned FAQ.
 
 ### Added
+
 - Regression test that starts a real Kate and verifies its live shortcuts.
 
 ## [1.0.0] — 2026-11-19
@@ -109,6 +131,7 @@ All notable changes to Kate++ are listed here. The format follows
 First release.
 
 ### Added
+
 - **Session memory**: Kate opens straight into your "Notepad" session; unsaved
   tabs and edits are stashed on close, no save prompts.
 - **Notepad++ shortcut scheme**: duplicate line, replace, comment, delete line,

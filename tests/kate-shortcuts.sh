@@ -87,9 +87,22 @@ if sys.argv[2] == "az":
 else:
     assert any(n.nodeType == 1 and n.tagName == "Action" and n.getAttribute("name") == "tools_highlighting"
                for n in bar.childNodes), "tools_highlighting is not on the menu bar"
-    assert label == ["&Language"], label
+    assert label == ["La&nguage"], label
 PY
 pass "Language menu added after Kate's first start and kept by Kate"
+
+FP=$H/.local/share/kxmlgui5/formatplugin/ui.rc
+python3 - "$FP" <<'PY' || die "Prettify button missing or not kept by Kate"
+import sys, xml.dom.minidom as m
+root = m.parse(sys.argv[1]).documentElement
+bar = next(n for n in root.childNodes if n.nodeType == 1 and n.tagName == "ToolBar" and n.getAttribute("name") == "mainToolBar")
+assert any(a.getAttribute("name") == "format_document" for a in bar.getElementsByTagName("Action")), "no toolbar entry"
+props = next(n for n in root.childNodes if n.nodeType == 1 and n.tagName == "ActionProperties")
+a = next(a for a in props.getElementsByTagName("Action") if a.getAttribute("name") == "format_document")
+assert a.getAttribute("text") == "Prettify" and a.getAttribute("icon") == "tools-wizard", a.attributes.items()
+assert a.getAttribute("shortcut") == "Ctrl+Alt+Shift+B", a.getAttribute("shortcut")
+PY
+pass "Prettify button on the toolbar, with its shortcut, kept by Kate"
 
 kpp uninstall --yes
 props() {  # "name=shortcut" for every entry in a file's <ActionProperties>

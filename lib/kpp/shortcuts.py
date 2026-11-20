@@ -50,6 +50,24 @@ def _load_or_new(path: Path, component: str):
     return doc
 
 
+def _no_content(el) -> bool:
+    """No child elements, comments or text: nothing of yours inside."""
+    return not any(n.nodeType != n.TEXT_NODE or n.data.strip() for n in el.childNodes)
+
+
+def _only_ours(props) -> bool:
+    """The <ActionProperties> Kate++ created, still exactly as created: no entries, comments,
+    text or attributes besides scheme="Default"."""
+    if any(n.nodeType != n.TEXT_NODE or n.data.strip() for n in props.childNodes):
+        return False
+    return dict(props.attributes.items()) in ({}, {"scheme": "Default"})
+
+
+def _has_action_properties(doc):
+    root = doc.documentElement
+    return any(el.parentNode is root for el in root.getElementsByTagName("ActionProperties"))
+
+
 def _action_properties(doc):
     root = doc.documentElement
     for el in root.getElementsByTagName("ActionProperties"):
@@ -64,7 +82,7 @@ def _action_properties(doc):
 def _save(path: Path, doc):
     text = doc.toprettyxml(indent=" ")
     text = "\n".join(line for line in text.splitlines() if line.strip()) + "\n"
-    core.atomic_write(path, text, 0o644)
+    core.atomic_write(path.resolve(), text)   # a symlinked file stays a symlink
 
 
 def install(kate, repo: Path, state: dict):
@@ -73,10 +91,13 @@ def install(kate, repo: Path, state: dict):
     for component, file, actions in overrides(repo):
         path = _target(kate, component, file)
         key = f"{component}/{file}"
+        doc = _load_or_new(path, component)
         if key not in before:
             before[key] = {"existed": path.exists(), "actions": {},
-                           "dirs_created": core.missing_dirs(path)}
-        doc = _load_or_new(path, component)
+                           "dirs_created": core.missing_dirs(path),
+                           # an existing file without <ActionProperties>: uninstall removes the
+                           # (then empty) element Kate++ adds, so the file comes back unchanged
+                           "props_created": path.exists() and not _has_action_properties(doc)}
         props = _action_properties(doc)
         existing = {a.getAttribute("name"): a for a in props.getElementsByTagName("Action")}
         for name, shortcut in actions:
@@ -96,29 +117,52 @@ def install(kate, repo: Path, state: dict):
 
 def uninstall(kate, repo: Path, state: dict):
     before = state.get("shortcuts_before", {})
-    for component, file, _ in overrides(repo):
+    for component, file, actions in overrides(repo):
         path = _target(kate, component, file)
+        managed = {name for name, _ in actions}   # other Kate++ entries (labels) aren't ours here
         info = before.get(f"{component}/{file}", {"existed": True, "actions": {}})
         if not path.exists():
             continue
         doc = _load_or_new(path, component)
         props = _action_properties(doc)
         for el in list(props.getElementsByTagName("Action")):
-            if el.getAttribute(MARK) != "true":
+            if el.getAttribute(MARK) != "true" or el.getAttribute("name") not in managed:
                 continue
             old = info["actions"].get(el.getAttribute("name"))
-            if old is None:
+            if old is None and set(el.attributes.keys()) <= {"name", "shortcut", MARK} and _no_content(el):
                 props.removeChild(el)
+            elif old is None:   # Kate++ created it, but it now holds something of yours too
+                for attr in ("shortcut", MARK):
+                    if el.hasAttribute(attr):
+                        el.removeAttribute(attr)
             else:
                 el.setAttribute("shortcut", old)
                 el.removeAttribute(MARK)
         user_entries = [a for a in props.getElementsByTagName("Action") if a.getAttribute(MARK) != "true"]
+        if info.get("props_created") and _only_ours(props):
+            props.parentNode.removeChild(props)
         if not info.get("existed") and not user_entries:
             path.unlink()      # Kate++ created it and nothing of the user's is in it
             core.remove_empty_dirs(info.get("dirs_created"))
         else:
             _save(path, doc)   # keep shortcuts the user changed in Kate after installing
     remove_legacy_scheme(kate)
+
+
+def finalize(kate, repo: Path, state: dict):
+    """Last uninstall step, after other Kate++ entries (the Language label) are gone: remove an
+    <ActionProperties> Kate++ created that is now exactly as created again."""
+    before = state.get("shortcuts_before", {})
+    for component, file, _ in overrides(repo):
+        path = _target(kate, component, file)
+        if not before.get(f"{component}/{file}", {}).get("props_created") or not path.exists():
+            continue
+        doc = _load_or_new(path, component)
+        root = doc.documentElement
+        for props in [el for el in root.getElementsByTagName("ActionProperties") if el.parentNode is root]:
+            if _only_ours(props):
+                root.removeChild(props)
+                _save(path, doc)
 
 
 def remove_legacy_scheme(kate):
