@@ -123,6 +123,25 @@ def run(*cmd, check=False, quiet=True):
         return subprocess.CompletedProcess(cmd, 127, "", "")
 
 
+def missing_dirs(path: Path) -> list:
+    """The folders above `path` that don't exist yet (deepest first): writing `path` creates them."""
+    out = []
+    d = Path(path).parent
+    while not d.exists() and d != d.parent:
+        out.append(str(d))
+        d = d.parent
+    return out
+
+
+def remove_empty_dirs(dirs):
+    """Remove folders Kate++ created, deepest first, but only while they are empty."""
+    for d in dirs or ():
+        try:
+            Path(d).rmdir()
+        except OSError:
+            break   # not empty (or already gone): leave it and its parents alone
+
+
 def atomic_write(path: Path, text: str, mode=None):
     path.parent.mkdir(parents=True, exist_ok=True)
     if mode is None:

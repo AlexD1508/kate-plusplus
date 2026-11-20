@@ -1358,13 +1358,18 @@ def do_uninstall(args):
         step("Kate++ settings removed (no record of your earlier values was available)")
     core.merge_rc(kate.katerc, [(SNIPPETS_GROUP, SNIPPETS_KEY, "@delete" if repos_now is None else repos_now)])
     remove_snippets(kate, state)   # after any katerc restore, so a restored file can't re-enable it
-    shutil.rmtree(STATE_DIR, ignore_errors=True)
     if format_left:   # keep just those records (and the command), so a later uninstall can retry
+        # written over state.json first, then everything else goes: the record is never absent
         core.save_state({"format_before": state["format_before"], "uninstall_pending": True})
+        for p in STATE_DIR.iterdir():
+            if p != core.STATE_FILE:
+                shutil.rmtree(p, ignore_errors=True) if p.is_dir() and not p.is_symlink() else p.unlink()
         warn("Kate's format-on-save setting couldn't be put back in: " + ", ".join(format_left)
              + "\n  Fix access to that file and run `kate-plusplus uninstall` again.")
-    elif BIN_LINK.is_symlink():
-        BIN_LINK.unlink()
+    else:
+        shutil.rmtree(STATE_DIR, ignore_errors=True)
+        if BIN_LINK.is_symlink():
+            BIN_LINK.unlink()
     step("Kate++ removed")
     info(f"Kept: your sessions & tabs, {USER_CONFIG.parent} and snapshots in {BACKUP_DIR}")
     if snap:

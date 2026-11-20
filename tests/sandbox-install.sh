@@ -535,6 +535,8 @@ pass "formatting settings restored byte for byte, later edits kept, unreadable f
 H=$root/format2; mkdir -p "$H/.config"
 run install --yes; run uninstall --yes
 [[ -e $H/.config/kate/formatting/settings.json ]] && die "uninstall left a formatting settings file Kate++ created"
+[[ -e $H/.config/kate/formatting ]] && die "uninstall left the empty formatting folder Kate++ created"
+[[ -e $H/.local/share/kxmlgui5/formatplugin ]] && die "uninstall left the empty formatplugin folder Kate++ created"
 # custom [kateformatplugin] configPath (Kate 26.08+ reads it): that file is changed and restored
 if env -i HOME="$root/probe" PATH=/usr/bin:/bin KPP_TEST=1 PYTHONPATH=lib python3 -c 'import sys; from kpp import core, formatting
 k = core.detect_kate(); sys.exit(0 if formatting._kate_at_least(k, formatting.CONFIG_PATH_MIN_KATE) else 1)'; then

@@ -114,7 +114,8 @@ def set_format_on_save(kate, state, enabled: bool):
         # recorded once per file, and saved before the file changes, so a later failure in
         # the same apply can never make a retry record Kate++'s own value as the original
         records[str(path)] = {"existed": path.exists(), "had_key": "formatOnSave" in data,
-                              "value": data.get("formatOnSave"), "text": text}
+                              "value": data.get("formatOnSave"), "text": text,
+                              "dirs_created": core.missing_dirs(path)}
         core.save_state(state)
     data["formatOnSave"] = enabled
     core.atomic_write(path, json.dumps(data, indent=4) + "\n")   # keeps an existing file's mode
@@ -156,6 +157,7 @@ def _restore_one(path, before):
         data.pop("formatOnSave", None)
     if not before["existed"] and not data:
         path.unlink()
+        core.remove_empty_dirs(before.get("dirs_created"))
     else:
         core.atomic_write(path, json.dumps(data, indent=4) + "\n")
 
