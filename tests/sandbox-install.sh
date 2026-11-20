@@ -311,7 +311,7 @@ PY
     before=$(md5sum "$UI"); run apply --yes
     [[ $(md5sum "$UI") == "$before" ]] || die "re-apply rewrote an unchanged menu file"
 else
-    grep -q 'text="&amp;Language"' "$UI" || die "Language menu not added"
+    grep -q 'text="La&amp;nguage"' "$UI" || die "Language menu not added"
     [[ -e $LJS ]] && die "language script written although Kate's language list isn't available"
 fi
 sed -i 's/^language-menu = true/language-menu = false/' "$H/.config/kate-plusplus/config.ini"
@@ -819,7 +819,7 @@ done
 sed -i 's/^ktexteditorpreviewplugin=true$/ktexteditorpreviewplugin=false/' "$S/Mine.katesession"   # you turn Preview off in Kate
 run apply --yes
 grep -qx 'ktexteditorpreviewplugin=false' "$S/Mine.katesession" || die "apply switched a plugin back on that the user turned off"
-grep -qx 'Show text for left and right sidebar=true' "$H/.config/katerc" || die "side-panel labels not switched on"
+grep -q '^Show text for left and right sidebar' "$H/.config/katerc" && die "side-panel text labels set (icons only since 1.1.1)"
 run uninstall --yes
 python3 - "$root/plugins.orig" "$S/Mine.katesession" <<'PY' || die "session plugin settings not restored"
 import sys, configparser
@@ -906,5 +906,72 @@ grep -qx 'Show text for left and right sidebar=false' "$H/.config/katerc" \
     || die "full-backup uninstall lost a newer key's recorded value"
 grep -qx 'Recent Files Count=10' "$H/.config/katerc" || die "full-backup uninstall lost the backup"
 pass "plugins switched on per session (once), a later off stays, a failed write is retried, uninstall restores them"
+
+# --- 1.1.0 set side-panel text labels; apply now puts back what each user had ---
+for case in none false later; do
+    H=$root/retire-$case; mkdir -p "$H/.config"
+    run install --yes
+    python3 - "$H" "$case" <<'PY'
+import json, sys, subprocess
+home, case = sys.argv[1], sys.argv[2]
+p = f"{home}/.local/state/kate-plusplus/state.json"; s = json.load(open(p))
+key = "[General]\tShow text for left and right sidebar"
+s["katerc_before"][key] = "false" if case == "false" else None    # what 1.1.0 recorded
+json.dump(s, open(p, "w"))
+k = f"{home}/.config/katerc"
+val = "false" if case == "later" else "true"                        # what the katerc holds now
+text = open(k).read().replace("[General]\n", f"[General]\nShow text for left and right sidebar={val}\n", 1)
+open(k, "w").write(text)
+PY
+    run apply --yes
+    got=$(grep '^Show text for left and right sidebar=' "$H/.config/katerc" || true)
+    case $case in
+        none)  [[ -z $got ]] || die "labels not removed for a user who never had them ($got)" ;;
+        false) [[ $got == *=false ]] || die "the user's own 'false' wasn't put back ($got)" ;;
+        later) [[ $got == *=false ]] || die "a value changed after 1.1.0 was overwritten ($got)" ;;
+    esac
+    grep -q 'Show text for left and right sidebar' "$H/.local/state/kate-plusplus/state.json" \
+        && die "retired key still recorded ($case)"
+done
+pass "1.1.0's side-panel labels: apply restores each user's own value (or a later change)"
+
+# --- Prettify button: added to the full plugin GUI file Kate writes, removed exactly ---
+H=$root/button; mkdir -p "$H/.local/share/kxmlgui5/formatplugin"
+FP=$H/.local/share/kxmlgui5/formatplugin/ui.rc
+cat > "$FP" <<'XML'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE gui SYSTEM "kpartgui.dtd">
+<gui name="formatplugin" library="formatplugin" version="2" translationDomain="formatplugin">
+ <MenuBar>
+  <Menu name="edit">
+   <Action name="format_on_save"/>
+   <Action name="format_document"/>
+  </Menu>
+ </MenuBar>
+ <ToolBar name="mainToolBar" noMerge="1">
+  <text>Format Plugin Toolbar</text>
+ </ToolBar>
+</gui>
+XML
+cp "$FP" "$root/button.orig"
+run install --yes
+grep -Eq '<Action (name="format_document" kate-plusplus="true"|kate-plusplus="true" name="format_document")/>' "$FP" || die "Prettify button not added to the toolbar"
+grep -q 'text="Prettify"' "$FP" && grep -q 'icon="tools-wizard"' "$FP" || die "Prettify button has no name/icon"
+before=$(md5sum "$FP"); run apply --yes
+[[ $(md5sum "$FP") == "$before" ]] || die "re-apply rewrote an unchanged plugin GUI file"
+sed -i 's/^prettify-button = true/prettify-button = false/' "$H/.config/kate-plusplus/config.ini"
+run apply --yes
+grep -Eq '<Action (name="format_document" kate-plusplus="true"|kate-plusplus="true" name="format_document")/>' "$FP" && die "prettify-button = false left the button"
+sed -i 's/^prettify-button = false/prettify-button = true/' "$H/.config/kate-plusplus/config.ini"
+run apply --yes
+run uninstall --yes
+python3 - "$root/button.orig" "$FP" <<'PY' || die "uninstall didn't restore the plugin GUI file"
+import sys, xml.dom.minidom as m
+def norm(f):
+    return "\n".join(l.strip() for l in m.parse(f).toprettyxml(indent=" ").splitlines() if l.strip())
+a, b = norm(sys.argv[1]), norm(sys.argv[2])
+assert a == b, (a, b)
+PY
+pass "Prettify button: added to Kate's toolbar, switchable, removed exactly on uninstall"
 
 echo "All sandbox tests passed."

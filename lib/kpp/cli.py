@@ -14,7 +14,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from . import core, formatting, languages, menus, plugins, ports, shortcuts, theme, window
+from . import core, formatting, languages, menus, plugins, ports, shortcuts, theme, toolbar, window
 from .core import (APP, BACKUP_DIR, BIN_LINK, CAELESTIA_SCHEME, DIM, BOLD, RESET, ACCENT,
                    GREEN, YELLOW, RED, KDEGLOBALS, REPO, STATE_DIR, USER_CONFIG, VERSION,
                    XDG_CONFIG, XDG_DATA, banner, info, section, step, warn, fail, ask, have, run)
@@ -227,6 +227,19 @@ def setup_formatting(cfg, kate, state):
     shutil.copyfile(REPO / "assets/icon.svg", icon)
 
 
+def prettify_button(cfg, kate, *, quiet=False):
+    if not cfg.flag("features", "prettify-button"):
+        toolbar.remove(kate)
+        return
+    st = toolbar.ensure(kate)
+    if quiet:
+        return
+    if st == "present":
+        step("Prettify button on the toolbar  (next to Undo / Redo)")
+    else:
+        info("Prettify button: appears after Kate's first start (added automatically)")
+
+
 def language_menu(cfg, kate, *, quiet=False):
     if not cfg.flag("features", "language-menu"):
         menus.remove(kate)
@@ -390,6 +403,25 @@ def restore_katerc(kate, state) -> bool:
 # fallback must not delete them (a user may have set them), it puts back their records instead
 NEWER_KATE_INI_KEYS = {("[Kate Plugins]", "katesnippetsplugin"),
                        ("[General]", "Show text for left and right sidebar")}
+
+# keys a released version set and a later one stopped managing: apply puts back the user's
+# recorded value (if the key still holds Kate++'s) and drops the record
+RETIRED_KATE_INI_KEYS = {("[General]", "Show text for left and right sidebar"): "true"}   # 1.1.0
+
+
+def retire_katerc_keys(kate, state):
+    before = state.get("katerc_before", {})
+    changed = False
+    for (group, key), ours in RETIRED_KATE_INI_KEYS.items():
+        rec = f"{group}\t{key}"
+        if rec not in before:
+            continue
+        old = before.pop(rec)
+        if core.read_rc_value(kate.katerc, group, key) == ours:   # a later change of yours stays
+            core.merge_rc(kate.katerc, [(group, key, "@delete" if old is None else old)])
+        changed = True
+    if changed:
+        core.save_state(state)
 
 
 def legacy_keys():
@@ -939,13 +971,15 @@ def _apply(args, first_install=False):
     section("Kate")
     install_files(kate, state)
     language_menu(cfg, kate)
+    prettify_button(cfg, kate)
     install_snippets(kate, state)
     setup_formatting(cfg, kate, state)
     ensure_sessions(kate)
     plugins.enable(REPO, state, session_files(kate))
-    step("Panels: function list, folder, preview, snippets, bookmarks (labelled side buttons)")
+    step("Panels: function list, folder, preview, snippets, bookmarks")
     source = resolve_theme_source(cfg, profile)
     theme_name = build_themes(cfg, kate, source)
+    retire_katerc_keys(kate, state)   # e.g. 1.1.0's side-panel text labels go back to icons
     kate_settings(cfg, kate, theme_name, state)
     window_colors(cfg, kate, source, theme_name, state)
     auto_save(cfg, kate, state)
@@ -1144,6 +1178,10 @@ def do_maintain(args):
             language_menu(cfg, kate, quiet=True)
         except Exception as e:  # noqa: BLE001 - e.g. Kate is rewriting its menu file right now
             warn(f"Language menu check failed (will retry next run): {e}")
+        try:
+            prettify_button(cfg, kate, quiet=True)
+        except Exception as e:  # noqa: BLE001 - e.g. Kate is rewriting the plugin's GUI file
+            warn(f"Prettify button check failed (will retry next run): {e}")
 
 
 def do_backup(args):
@@ -1254,6 +1292,12 @@ def do_doctor(args):
             "present": "Language menu on the menu bar",
             "missing": "Language menu missing (Kate was updated?) → kate-plusplus apply",
             "pending": "Language menu appears after Kate's first start"}[st])
+    if cfg.flag("features", "prettify-button"):
+        st = toolbar.status(kate)
+        {"present": ok, "missing": bad, "pending": meh}[st]({
+            "present": "Prettify button on the toolbar",
+            "missing": "Prettify button missing (Kate was updated?) → kate-plusplus apply",
+            "pending": "Prettify button appears after Kate's first start"}[st])
     (ok if (kate.data / "katepart5/script/commands/kate-plusplus.js").exists() else bad)("Notepad++ tools script")
     stash = core.read_rc_value(kate.katerc, "[General]", "Stash unsaved file changes") == "true"
     (ok if stash else bad)("Stash (no save prompts, tabs survive restarts)")
@@ -1390,6 +1434,7 @@ def _uninstall(args):
     remove_overlay()
     remove_systemd()
     restore_default_editor(state)
+    toolbar.remove(kate)
     shortcuts.uninstall(kate, REPO, state)
     menus.remove(kate)
     plugins.restore(state)

@@ -50,6 +50,11 @@ def _load_or_new(path: Path, component: str):
     return doc
 
 
+def _has_action_properties(doc):
+    root = doc.documentElement
+    return any(el.parentNode is root for el in root.getElementsByTagName("ActionProperties"))
+
+
 def _action_properties(doc):
     root = doc.documentElement
     for el in root.getElementsByTagName("ActionProperties"):
@@ -73,10 +78,13 @@ def install(kate, repo: Path, state: dict):
     for component, file, actions in overrides(repo):
         path = _target(kate, component, file)
         key = f"{component}/{file}"
+        doc = _load_or_new(path, component)
         if key not in before:
             before[key] = {"existed": path.exists(), "actions": {},
-                           "dirs_created": core.missing_dirs(path)}
-        doc = _load_or_new(path, component)
+                           "dirs_created": core.missing_dirs(path),
+                           # an existing file without <ActionProperties>: uninstall removes the
+                           # (then empty) element Kate++ adds, so the file comes back unchanged
+                           "props_created": path.exists() and not _has_action_properties(doc)}
         props = _action_properties(doc)
         existing = {a.getAttribute("name"): a for a in props.getElementsByTagName("Action")}
         for name, shortcut in actions:
@@ -113,6 +121,8 @@ def uninstall(kate, repo: Path, state: dict):
                 el.setAttribute("shortcut", old)
                 el.removeAttribute(MARK)
         user_entries = [a for a in props.getElementsByTagName("Action") if a.getAttribute(MARK) != "true"]
+        if info.get("props_created") and not [n for n in props.childNodes if n.nodeType == n.ELEMENT_NODE]:
+            props.parentNode.removeChild(props)
         if not info.get("existed") and not user_entries:
             path.unlink()      # Kate++ created it and nothing of the user's is in it
             core.remove_empty_dirs(info.get("dirs_created"))

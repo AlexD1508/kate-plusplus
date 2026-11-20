@@ -6,6 +6,21 @@ All notable changes to Kate++ are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Prettify button** on the toolbar, next to Undo / Redo (same as Ctrl+Alt+Shift+B). Kate++
+  adds it to the Format plugin's toolbar section once Kate has written that plugin's GUI
+  file (first start); `[features] prettify-button = false` turns it off. `doctor` checks it.
+
+### Changed
+- Side-panel buttons show **icons only** again: the text labels 1.1.0 added were hard to read.
+  `apply` puts back what you had before 1.1.0 (or keeps a value you changed since).
+- The Language menu opens with <kbd>Alt</kbd>+<kbd>N</kbd>: <kbd>Alt</kbd>+<kbd>L</kbd> already belongs to
+  *LSP Client*.
+
+### Fixed
+- Uninstall also removes the empty shortcut section Kate++ added to an existing Kate GUI
+  file, so the file comes back exactly as it was.
+
 ## [1.1.0] — 2026-11-20
 
 ### Added

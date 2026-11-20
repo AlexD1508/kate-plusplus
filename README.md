@@ -66,7 +66,7 @@ A **harmonised** syntax theme: strings green, numbers orange, functions blue. Ea
 <td valign="top">
 
 ### 🗂️ The Notepad++ layout
-An **A–Z Language menu** on the menu bar (pick Java for a quick draft, close Kate, and it's still a Java tab weeks later), unlimited tabs, a **document map** (minimap), **breadcrumbs** above the text, and labelled side panels: **function list**, folder-as-workspace, Markdown preview, snippets and bookmarks. Plus colour swatches and rainbow brackets.
+An **A–Z Language menu** on the menu bar (pick Java for a quick draft, close Kate, and it's still a Java tab weeks later), unlimited tabs, a **document map** (minimap), **breadcrumbs** above the text, and side panels for the **function list**, folder-as-workspace, Markdown preview, snippets and bookmarks. Plus colour swatches and rainbow brackets.
 
 </td>
 <td valign="top">
@@ -96,8 +96,8 @@ Just like Notepad++: hover a letter, pick a language. Every language Kate knows 
 
 <sub>On Kate 24.08, clang-format only tidies the lines changed since the last Git commit.</sub>
 
-### 🗂️ Panels with names
-Function list, folder, preview, snippets: the side buttons say what they are, so there's no guessing which icon is which.
+### 🪄 A Prettify button
+Right next to Undo and Redo on the toolbar, for when you'd rather click than remember a shortcut.
 
 </td>
 <td width="56%" valign="top">
@@ -171,7 +171,7 @@ curl -fsSL https://raw.githubusercontent.com/AlexD1508/kate-plusplus/main/instal
 |---|:---:|:---:|
 | Session memory, no save prompts | ✅ | ✅ |
 | Notepad++ shortcuts & tools | ✅ | ✅ |
-| A–Z Language menu, Prettify, labelled panels | ✅ | ✅ |
+| A–Z Language menu, Prettify button, side panels | ✅ | ✅ |
 | Tabs, document map, function list, macros | ✅ | ✅ |
 | Safety snapshots & one-command restore | ✅ | ✅ |
 | Kate as default text editor | ✅ | ✅ |
