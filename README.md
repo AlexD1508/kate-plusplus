@@ -233,7 +233,7 @@ With a language server installed, Kate++ turns on Kate's meaning-aware extras: *
 | Go to line · Find | <kbd>Ctrl</kbd>+<kbd>G</kbd> · <kbd>Ctrl</kbd>+<kbd>F</kbd>, <kbd>F3</kbd> | same |
 | Quit | your window manager's close key | <kbd>Ctrl</kbd>+<kbd>Q</kbd> |
 
-Every tool is also in **Tools → Scripts → Notepad++ Tools** and in the command bar (<kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>I</kbd>, then type its name). The **Language** menu works like Notepad++'s: it sits on the menu bar with every language Kate knows, grouped by kind. You can also click the language name in the status bar for a searchable list.
+Every tool is also in **Tools → Scripts → Notepad++ Tools** and in the command bar (<kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>I</kbd>, then type its name). The **Language** menu works like Notepad++'s: it sits on the menu bar with every language Kate knows in A–Z submenus (hover **J** for Java, JavaScript, JSON, …), plus *All Languages*, Kate's list grouped by kind. You can also click the language name in the status bar for a searchable list.
 
 <br>
 
