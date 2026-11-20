@@ -1002,5 +1002,42 @@ run uninstall --yes
 grep -q 'text="Tidy"' "$FP" || die "uninstall removed the user's own name for the button"
 grep -q 'icon="tools-wizard"' "$FP" && die "uninstall left Kate++'s icon"
 pass "Prettify button: your own name stays, typos warn, symlinked GUI files stay symlinks"
+# GUI files without a shortcut section come back exactly, also when another Kate++ entry
+# (the Language label) shared the section, or the background job had to re-create the
+# button's entry after you removed Kate++'s shortcut entry
+H=$root/sections; mkdir -p "$H/.local/share/kxmlgui5/katepart" "$H/.local/share/kxmlgui5/formatplugin"
+UI=$H/.local/share/kxmlgui5/katepart/katepart5ui.rc; FP=$H/.local/share/kxmlgui5/formatplugin/ui.rc
+cat > "$UI" <<'XML'
+<!DOCTYPE gui SYSTEM 'kpartgui.dtd'>
+<gui name="KatePartView" version="999">
+ <MenuBar>
+  <Menu name="tools"><text>Tools</text><Action name="tools_highlighting"/></Menu>
+  <Menu name="settings"><text>Settings</text></Menu>
+ </MenuBar>
+</gui>
+XML
+cp "$UI" "$root/sections-ui.orig"; cp "$root/button.orig" "$FP"
+run install --yes
+grep -q '<ActionProperties' "$UI" || die "setup: no shortcut section after install"
+grep -q 'text="All Languages"\|text="La&amp;nguage"' "$UI" || die "setup: Language label not added"
+python3 - "$FP" <<'PY'
+import sys, xml.dom.minidom as m   # you remove Kate++'s shortcut entry for format_document
+d = m.parse(sys.argv[1]); r = d.documentElement
+for a in list(r.getElementsByTagName("Action")):
+    if a.parentNode.tagName == "ActionProperties" and a.getAttribute("name") == "format_document":
+        a.parentNode.removeChild(a)
+open(sys.argv[1], "w").write(d.toxml())
+PY
+run maintain --quiet                                     # the background job adds it back, marked
+grep -q 'kate-plusplus-created="true"' "$FP" || die "re-created button entry isn't marked as Kate++'s"
+run uninstall --yes
+python3 - "$root/sections-ui.orig" "$UI" "$root/button.orig" "$FP" <<'PY' || die "a GUI file without a shortcut section didn't come back exactly"
+import sys, xml.dom.minidom as m
+def norm(f):
+    return "\n".join(l.strip() for l in m.parse(f).toprettyxml(indent=" ").splitlines() if l.strip())
+for a, b in ((sys.argv[1], sys.argv[2]), (sys.argv[3], sys.argv[4])):
+    assert norm(a) == norm(b), (b, norm(b))
+PY
+pass "GUI files without a shortcut section come back exactly (shared section, re-created entry)"
 
 echo "All sandbox tests passed."

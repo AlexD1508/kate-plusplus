@@ -144,6 +144,22 @@ def uninstall(kate, repo: Path, state: dict):
     remove_legacy_scheme(kate)
 
 
+def finalize(kate, repo: Path, state: dict):
+    """Last uninstall step, after other Kate++ entries (the Language label) are gone: remove an
+    <ActionProperties> Kate++ created that is now exactly as created again."""
+    before = state.get("shortcuts_before", {})
+    for component, file, _ in overrides(repo):
+        path = _target(kate, component, file)
+        if not before.get(f"{component}/{file}", {}).get("props_created") or not path.exists():
+            continue
+        doc = _load_or_new(path, component)
+        root = doc.documentElement
+        for props in [el for el in root.getElementsByTagName("ActionProperties") if el.parentNode is root]:
+            if _only_ours(props):
+                root.removeChild(props)
+                _save(path, doc)
+
+
 def remove_legacy_scheme(kate):
     """Clean up the 1.0.0 shortcut-scheme files and switch Kate back to its default scheme."""
     for comp in ("kate", "katepart", "keyboardmacros"):
