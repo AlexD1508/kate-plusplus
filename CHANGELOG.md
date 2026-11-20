@@ -16,6 +16,8 @@ All notable changes to Kate++ are listed here. The format follows
   `apply` puts back what you had before 1.1.0 (or keeps a value you changed since).
 - The Language menu opens with <kbd>Alt</kbd>+<kbd>N</kbd>: <kbd>Alt</kbd>+<kbd>L</kbd> already belongs to
   *LSP Client*.
+- AUR package: 1.1.0, and it suggests the main Prettify formatters (jq, prettier, ruff,
+  shfmt) as optional dependencies.
 
 ### Fixed
 - Uninstall also removes the empty shortcut section Kate++ added to an existing Kate GUI

@@ -1,6 +1,6 @@
 # Maintainer: AlexD1508 <https://github.com/AlexD1508>
 pkgname=kate-plusplus
-pkgver=1.0.1
+pkgver=1.1.0
 pkgrel=1
 pkgdesc="Notepad++ comfort for Kate: session memory, Notepad++ shortcuts and tools, harmonised themes"
 arch=('any')
@@ -11,10 +11,14 @@ optdepends=(
   'caelestia-cli: wallpaper-driven theme and Super+J pop-up notepad'
   'ttf-jetbrains-mono-nerd: recommended editor font'
   'xdg-utils: make Kate the default text editor'
+  'jq: Prettify for JSON'
+  'prettier: Prettify for JS, TS, CSS and HTML'
+  'ruff: Prettify for Python'
+  'shfmt: Prettify for shell scripts'
 )
 install=kate-plusplus.install
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('0d4ac097f6be6e47c32ac5a8aa0f4ff152345de147b0cf326ebfd4fbb09f7387')
+sha256sums=('e9d0fcc91fa73ea098b49c5ce5b3a42225367159b0f06b7e64dff20eaea10fcd')
 
 package() {
   cd "$pkgname-$pkgver"
