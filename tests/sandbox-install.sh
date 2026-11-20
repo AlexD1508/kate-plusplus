@@ -801,6 +801,28 @@ a, b = plugins(sys.argv[1]), plugins(sys.argv[2])
 assert b == {**a, "ktexteditorpreviewplugin": "false"}, (a, b)   # your later "off" stays
 PY
 grep -q '^Show text for left and right sidebar' "$H/.config/katerc" && die "uninstall left the side-panel labels setting"
-pass "plugins switched on per session (once), a later off stays, uninstall restores them"
+# a failed session write is retried on the next run (the recorded originals aren't "done")
+H=$root/plugins-retry; mkdir -p "$H/.local/share/kate/sessions"
+printf '[Kate Plugins]\nkatesnippetsplugin=false\n' > "$H/.local/share/kate/sessions/R.katesession"
+env -i HOME="$H" PATH=/usr/bin:/bin KPP_TEST=1 PYTHONPATH=lib python3 - <<'PY' || die "a failed plugin write was not retried"
+from pathlib import Path
+from kpp import core, plugins
+f = Path(core.HOME) / ".local/share/kate/sessions/R.katesession"
+state, real = {}, core.merge_rc
+def broken(*a, **k):
+    raise OSError("disk full")
+core.merge_rc = broken
+try:
+    plugins.enable(core.REPO, state, [f])
+except OSError:
+    pass
+core.merge_rc = real
+assert plugins.pending(core.REPO, state, [f]), "failed write counted as done"
+plugins.enable(core.REPO, state, [f])
+assert core.read_rc_value(f, "[Kate Plugins]", "katesnippetsplugin") == "true"
+assert state["plugins_before"][str(f)]["katesnippetsplugin"] == "false", "original baseline lost"
+assert not plugins.pending(core.REPO, state, [f])
+PY
+pass "plugins switched on per session (once), a later off stays, a failed write is retried, uninstall restores them"
 
 echo "All sandbox tests passed."

@@ -1098,8 +1098,11 @@ def do_maintain(args):
             warn(f"snapshot failed: {e}")
     try:   # sessions created since the last apply get Kate++'s plugins too (Kate must be closed)
         state = core.load_state()
-        if core.installed(state) and not core.kate_running(kate):
-            plugins.enable(REPO, state, session_files(kate))
+        files = session_files(kate)
+        if (core.installed(state) and not core.kate_running(kate)
+                and plugins.pending(REPO, state, files)
+                and make_backup(kate, force=True, label="pre-plugins")):   # snapshot first, always
+            plugins.enable(REPO, state, files)
     except Exception as e:  # noqa: BLE001 - background job: report and continue
         warn(f"plugin check failed (will retry next run): {e}")
     try:
