@@ -14,7 +14,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from . import core, menus, ports, shortcuts, theme, window
+from . import core, formatting, menus, ports, shortcuts, theme, window
 from .core import (APP, BACKUP_DIR, BIN_LINK, CAELESTIA_SCHEME, DIM, BOLD, RESET, ACCENT,
                    GREEN, YELLOW, RED, KDEGLOBALS, REPO, STATE_DIR, USER_CONFIG, VERSION,
                    XDG_CONFIG, XDG_DATA, banner, info, section, step, warn, fail, ask, have, run)
@@ -205,6 +205,17 @@ def theme_display_name(source):
 def install_files(kate, state):
     shortcuts.install(kate, REPO, state)
     step("Notepad++ keyboard shortcuts  (merged: every other key keeps Kate's default)")
+
+
+def setup_formatting(cfg, kate, state):
+    on_save = cfg.strict_flag("editor", "format-on-save")
+    formatting.set_format_on_save(kate, state, on_save)
+    found = [cmd for cmd, _ in formatting.installed()]
+    tools = ", ".join(found) if found else "no formatters installed yet (see `kate-plusplus doctor`)"
+    if formatting.shortcut_supported(kate):
+        step(f"Prettify with Ctrl+Alt+Shift+B{' · on save' if on_save else ''}  {DIM}({tools}){RESET}")
+    else:
+        info(f"Prettify: command bar (Ctrl+Alt+I) → Format Document {DIM}(the shortcut needs Kate 24.08+){RESET}")
 
     dst = kate.data / "katepart5/script/commands/kate-plusplus.js"
     dst.parent.mkdir(parents=True, exist_ok=True)
@@ -891,10 +902,12 @@ def do_apply(args, first_install=False):
         info(f"New options added to {USER_CONFIG.name}: {', '.join(new_options)}")
 
     section("Safety first")
-    if kate.katerc.exists() and not PRE_INSTALL.exists() and not core.load_state():
+    if kate.katerc.exists() and not PRE_INSTALL.exists() and not core.installed(core.load_state()):
         PRE_INSTALL.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(kate.katerc, PRE_INSTALL)
         step(f"Original Kate settings saved  {DIM}{PRE_INSTALL}{RESET}")
+    if state.pop("uninstall_pending", None):   # installed again: the next uninstall is a full one
+        core.save_state(state)                 # (format_before keeps the original baselines)
     snap = make_backup(kate, force=True, label="pre-apply")
     if snap:
         step(f"Snapshot of sessions & tabs   {DIM}{snap.name}{RESET}")
@@ -905,6 +918,7 @@ def do_apply(args, first_install=False):
     install_files(kate, state)
     language_menu(cfg, kate)
     install_snippets(kate, state)
+    setup_formatting(cfg, kate, state)
     ensure_sessions(kate)
     source = resolve_theme_source(cfg, profile)
     theme_name = build_themes(cfg, kate, source)
@@ -1251,6 +1265,15 @@ def do_doctor(args):
         for cmds, lang, hint in LANGUAGE_SERVERS:
             if lang not in found and lang in ("Python", "C / C++", "JavaScript / TypeScript", "Java", "Bash"):
                 info(f"{lang}: {DIM}{hint}{RESET}")
+    found = formatting.installed()
+    if not formatting.shortcut_supported(kate):
+        meh(f"Prettify shortcut needs Kate 24.08+ (you have {kate.version}); "
+            "use the command bar: Ctrl+Alt+I → Format Document")
+    (ok if found else meh)("Prettify (Ctrl+Alt+Shift+B) · formatters: "
+                           + (", ".join(f"{c} ({w})" for c, w in found) if found else "none installed yet"))
+    for cmd, what, hint in formatting.FORMATTERS:
+        if cmd in formatting.POPULAR and not have(cmd):
+            info(f"{what}: {DIM}{hint}{RESET}")
     if have("xdg-mime"):
         d = (run("xdg-mime", "query", "default", "text/plain").stdout or "").strip()
         (ok if d == "org.kde.kate.desktop" or not cfg.flag("features", "default-editor") else meh)(
@@ -1281,6 +1304,22 @@ def do_update(args):
     os.execv(sys.executable, [sys.executable, str(REPO / "bin" / APP), "apply", "--yes"])
 
 
+def finish_pending_uninstall(kate, state):
+    left = formatting.restore(kate, state)
+    if left:
+        core.save_state(state)
+        fail("Still couldn't put back Kate's format-on-save setting in: " + ", ".join(left))
+    shutil.rmtree(STATE_DIR, ignore_errors=True)
+    if BIN_LINK.is_symlink():
+        BIN_LINK.unlink()
+    step("Kate's format-on-save setting restored; Kate++ removed")
+
+
+# commands that stay allowed while an uninstall is unfinished: they finish it, set Kate++ up
+# again (apply clears the marker), or don't touch Kate's settings
+PENDING_OK = {"uninstall", "install", "apply", "update", "doctor", "backup"}
+
+
 def do_uninstall(args):
     kate = need_kate()
     banner("Uninstall")
@@ -1288,12 +1327,16 @@ def do_uninstall(args):
         fail("Nothing changed.", 0)
     core.wait_for_kate_closed(kate)
     state = core.load_state()
+    if state.get("uninstall_pending"):   # an earlier uninstall left only these files to restore
+        finish_pending_uninstall(kate, state)
+        return
     snap = make_backup(kate, force=True, label="before-uninstall")
     remove_overlay()
     remove_systemd()
     restore_default_editor(state)
     shortcuts.uninstall(kate, REPO, state)
     menus.remove(kate)
+    format_left = formatting.restore(kate, state)
     (kate.data / "katepart5/script/commands/kate-plusplus.js").unlink(missing_ok=True)
     for f in (kate.data / "org.kde.syntax-highlighting/themes").glob(f"{APP}-*.theme"):
         f.unlink()
@@ -1315,9 +1358,18 @@ def do_uninstall(args):
         step("Kate++ settings removed (no record of your earlier values was available)")
     core.merge_rc(kate.katerc, [(SNIPPETS_GROUP, SNIPPETS_KEY, "@delete" if repos_now is None else repos_now)])
     remove_snippets(kate, state)   # after any katerc restore, so a restored file can't re-enable it
-    shutil.rmtree(STATE_DIR, ignore_errors=True)
-    if BIN_LINK.is_symlink():
-        BIN_LINK.unlink()
+    if format_left:   # keep just those records (and the command), so a later uninstall can retry
+        # written over state.json first, then everything else goes: the record is never absent
+        core.save_state({"format_before": state["format_before"], "uninstall_pending": True})
+        for p in STATE_DIR.iterdir():
+            if p != core.STATE_FILE:
+                shutil.rmtree(p, ignore_errors=True) if p.is_dir() and not p.is_symlink() else p.unlink()
+        warn("Kate's format-on-save setting couldn't be put back in: " + ", ".join(format_left)
+             + "\n  Fix access to that file and run `kate-plusplus uninstall` again.")
+    else:
+        shutil.rmtree(STATE_DIR, ignore_errors=True)
+        if BIN_LINK.is_symlink():
+            BIN_LINK.unlink()
     step("Kate++ removed")
     info(f"Kept: your sessions & tabs, {USER_CONFIG.parent} and snapshots in {BACKUP_DIR}")
     if snap:
@@ -1426,8 +1478,14 @@ def main(argv=None):
             overrides[("features", "backups")] = "false"
         if overrides:
             core.ensure_user_config(overrides)
-        first = args.cmd == "install" and not core.load_state()
+        first = args.cmd == "install" and not core.installed(core.load_state())
         return do_apply(args, first_install=first)
+
+    if core.load_state().get("uninstall_pending") and not (
+            args.cmd in PENDING_OK or (args.cmd == "config" and args.print)):
+        # an unfinished uninstall: a write now would get records the retry doesn't undo
+        fail("An earlier uninstall couldn't finish. Run `kate-plusplus uninstall` again to finish it,\n"
+             "  or `kate-plusplus apply` to set Kate++ up again.")
 
     handlers = {"theme": do_theme, "backup": do_backup, "maintain": do_maintain, "restore": do_restore, "doctor": do_doctor,
                 "update": do_update, "uninstall": do_uninstall, "config": do_config}

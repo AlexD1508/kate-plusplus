@@ -74,7 +74,8 @@ def install(kate, repo: Path, state: dict):
         path = _target(kate, component, file)
         key = f"{component}/{file}"
         if key not in before:
-            before[key] = {"existed": path.exists(), "actions": {}}
+            before[key] = {"existed": path.exists(), "actions": {},
+                           "dirs_created": core.missing_dirs(path)}
         doc = _load_or_new(path, component)
         props = _action_properties(doc)
         existing = {a.getAttribute("name"): a for a in props.getElementsByTagName("Action")}
@@ -114,6 +115,7 @@ def uninstall(kate, repo: Path, state: dict):
         user_entries = [a for a in props.getElementsByTagName("Action") if a.getAttribute(MARK) != "true"]
         if not info.get("existed") and not user_entries:
             path.unlink()      # Kate++ created it and nothing of the user's is in it
+            core.remove_empty_dirs(info.get("dirs_created"))
         else:
             _save(path, doc)   # keep shortcuts the user changed in Kate after installing
     remove_legacy_scheme(kate)

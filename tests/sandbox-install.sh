@@ -488,6 +488,109 @@ out=$(env -i HOME="$H" PATH=/usr/bin:/bin KPP_TEST=1 ./bin/kate-plusplus uninsta
 grep -q 'Kate++ settings removed' <<<"$out" || die "partial legacy records were treated as a full restore"
 grep -q '^Tabbar Tab Limit=' "$H/.config/katerc" && die "partial legacy uninstall left Kate++ settings behind"
 pass "partial legacy records fall back to removing Kate++ settings"
+# --- prettify: format-on-save off by default, your own settings.json restored on uninstall ---
+H=$root/format; mkdir -p "$H/.config/kate/formatting"
+printf '{"formatterForPython":  "black",\n  "formatOnSave":true }' > "$H/.config/kate/formatting/settings.json"   # odd spacing, no final newline
+cp "$H/.config/kate/formatting/settings.json" "$root/format.orig"
+run install --yes
+python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d["formatOnSave"] is False and d["formatterForPython"] == "black", d' \
+    "$H/.config/kate/formatting/settings.json" || die "format-on-save not turned off (or user keys lost)"
+grep -q 'name="format_document" shortcut="Ctrl+Alt+Shift+B"' "$H/.local/share/kxmlgui5/formatplugin/ui.rc" || die "format shortcut missing"
+run uninstall --yes
+cmp -s "$root/format.orig" "$H/.config/kate/formatting/settings.json" || die "formatting settings not restored byte for byte"
+# an edit you made after install survives: only formatOnSave is put back
+run install --yes
+f=$H/.config/kate/formatting/settings.json
+python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); d["formatterForJson"]="prettier"; json.dump(d, open(sys.argv[1], "w"))' "$f"
+run uninstall --yes
+python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d == {"formatterForPython": "black", "formatOnSave": True, "formatterForJson": "prettier"}, d' "$f" \
+    || die "a later edit to the formatting settings was lost on uninstall"
+# a settings file uninstall can't read keeps its record, and a second uninstall finishes the job
+if [[ $EUID -ne 0 ]]; then
+    cp "$root/format.orig" "$f"; run install --yes; chmod 000 "$f"
+    out=$(env -i HOME="$H" PATH=/usr/bin:/bin KPP_TEST=1 ./bin/kate-plusplus uninstall --yes 2>&1)
+    chmod 644 "$f"
+    grep -q "format-on-save setting couldn't be put back" <<<"$out" || die "unreadable formatting settings weren't reported"
+    grep -q "$f" "$H/.local/state/kate-plusplus/state.json" || die "record of an unrestored formatting file was deleted"
+    [[ $(stat -c %a "$H/.local/state/kate-plusplus/state.json") == 600 ]] || die "state.json (holding a settings copy) isn't owner-only"
+    env -i HOME="$H" PATH=/usr/bin:/bin KPP_TEST=1 ./bin/kate-plusplus theme >/dev/null 2>&1 \
+        && die "theme ran while an uninstall was unfinished (its changes would never be undone)"
+    run uninstall --yes
+    cmp -s "$root/format.orig" "$f" || die "retrying uninstall didn't restore the formatting settings"
+    [[ -e $H/.local/state/kate-plusplus ]] && die "state left behind after a complete uninstall"
+    # apply in between: the next uninstall must be a full one again
+    cp "$root/format.orig" "$f"; cp "$H/.config/katerc" "$root/format.katerc"
+    run install --yes; chmod 000 "$f"
+    env -i HOME="$H" PATH=/usr/bin:/bin KPP_TEST=1 ./bin/kate-plusplus uninstall --yes >/dev/null 2>&1 || true
+    chmod 644 "$f"
+    run apply --yes
+    grep -q uninstall_pending "$H/.local/state/kate-plusplus/state.json" && die "apply kept the pending-uninstall marker"
+    run uninstall --yes
+    cmp -s "$root/format.orig" "$f" || die "formatting settings not restored after uninstall → apply → uninstall"
+    [[ -e $H/.local/share/kxmlgui5/formatplugin/ui.rc ]] && die "uninstall after a re-apply left the Prettify shortcut behind"
+    grep -q '^Tabbar Tab Limit=' "$H/.config/katerc" && die "uninstall after a re-apply left Kate++ settings in katerc"
+    [[ -e $H/.local/state/kate-plusplus ]] && die "state left behind after uninstall → apply → uninstall"
+fi
+pass "formatting settings restored byte for byte, later edits kept, unreadable file retried"
+H=$root/format2; mkdir -p "$H/.config"
+run install --yes; run uninstall --yes
+[[ -e $H/.config/kate/formatting/settings.json ]] && die "uninstall left a formatting settings file Kate++ created"
+[[ -e $H/.config/kate/formatting ]] && die "uninstall left the empty formatting folder Kate++ created"
+[[ -e $H/.local/share/kxmlgui5/formatplugin ]] && die "uninstall left the empty formatplugin folder Kate++ created"
+# custom [kateformatplugin] configPath (Kate 26.08+ reads it): that file is changed and restored
+if env -i HOME="$root/probe" PATH=/usr/bin:/bin KPP_TEST=1 PYTHONPATH=lib python3 -c 'import sys; from kpp import core, formatting
+k = core.detect_kate(); sys.exit(0 if formatting._kate_at_least(k, formatting.CONFIG_PATH_MIN_KATE) else 1)'; then
+    H=$root/format3; mkdir -p "$H/.config" "$H/fmt"
+    printf '[kateformatplugin]\nconfigPath=%s\n' "$H/fmt/my.json" > "$H/.config/katerc"
+    printf '{\n    "formatOnSave": true\n}\n' > "$H/fmt/my.json"; chmod 600 "$H/fmt/my.json"
+    run install --yes
+    python3 -c 'import json,sys; assert json.load(open(sys.argv[1]))["formatOnSave"] is False' "$H/fmt/my.json" \
+        || die "custom configPath not honoured"
+    [[ $(stat -c %a "$H/fmt/my.json") == 600 ]] || die "settings file permissions changed"
+    [[ -e $H/.config/kate/formatting/settings.json ]] && die "wrote the default file although configPath is set"
+    # the same file through a '..' alias must reuse its baseline, not record Kate++'s value
+    sed -i "s|^configPath=.*|configPath=$H/fmt/../fmt/my.json|" "$H/.config/katerc"
+    run apply --yes
+    sed -i "s|^configPath=.*|configPath=$H/fmt/my.json|" "$H/.config/katerc"
+    # switch configPath to a second file and apply again: both files must be restored
+    printf '{\n    "formatOnSave": true\n}\n' > "$H/fmt/other.json"
+    sed -i "s|^configPath=.*|configPath=$H/fmt/other.json|" "$H/.config/katerc"
+    run apply --yes
+    python3 -c 'import json,sys; assert json.load(open(sys.argv[1]))["formatOnSave"] is False' "$H/fmt/other.json" \
+        || die "new configPath not honoured"
+    run uninstall --yes
+    for f in my other; do
+        python3 -c 'import json,sys; assert json.load(open(sys.argv[1]))["formatOnSave"] is True' "$H/fmt/$f.json" \
+            || die "settings file $f.json not restored"
+    done
+else   # older Kate ignores configPath, so the default file is the one Kate++ must change
+    H=$root/format3; mkdir -p "$H/.config"
+    printf '[kateformatplugin]\nconfigPath=%s\n' "$H/ignored.json" > "$H/.config/katerc"
+    run install --yes
+    python3 -c 'import json,sys; assert json.load(open(sys.argv[1]))["formatOnSave"] is False' \
+        "$H/.config/kate/formatting/settings.json" || die "default settings file not used on older Kate"
+    [[ -e $H/ignored.json ]] && die "wrote configPath although this Kate ignores it"
+    run uninstall --yes
+fi
+# Kate before 26.08 ignores configPath: Kate++ must then change the default file
+env -i HOME="$H" PATH=/usr/bin:/bin KPP_TEST=1 PYTHONPATH=lib python3 - <<'PY' || die "configPath used on a Kate that ignores it"
+import pathlib
+from kpp import core, formatting
+k = core.Kate("native", ["kate"], core.XDG_CONFIG, core.XDG_DATA, "25.08.0")
+assert formatting.settings_path(k) == (core.XDG_CONFIG / "kate/formatting/settings.json").resolve()
+k.version = "26.08.0"
+assert formatting.settings_path(k) != (core.XDG_CONFIG / "kate/formatting/settings.json").resolve()
+core.merge_rc(k.katerc, [("[kateformatplugin]", "configPath", "fmt/relative.json")])
+assert formatting.settings_path(k) is None, "a relative configPath must not be guessed"
+PY
+# a typo in format-on-save warns and keeps the default (off) instead of silently meaning false
+H=$root/format4; mkdir -p "$H/.config"
+run install --yes
+sed -i 's/^format-on-save = .*/format-on-save = tru/' "$H/.config/kate-plusplus/config.ini"
+out=$(env -i HOME="$H" PATH=/usr/bin:/bin KPP_TEST=1 ./bin/kate-plusplus apply --yes 2>&1)
+grep -q "isn't true or false" <<<"$out" || die "invalid format-on-save value did not warn"
+pass "prettify: format-on-save off, shortcut merged, settings restored exactly (incl. configPath, 0600)"
+
 # --- fonts, ligatures, snippets, Qt style hint ---
 H=$root/polish; mkdir -p "$H/.config/qtengine"
 printf '{"theme": {"style": "Darkly"}}' > "$H/.config/qtengine/config.json"

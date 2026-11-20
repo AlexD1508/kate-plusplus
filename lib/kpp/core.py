@@ -123,6 +123,25 @@ def run(*cmd, check=False, quiet=True):
         return subprocess.CompletedProcess(cmd, 127, "", "")
 
 
+def missing_dirs(path: Path) -> list:
+    """The folders above `path` that don't exist yet (deepest first): writing `path` creates them."""
+    out = []
+    d = Path(path).parent
+    while not d.exists() and d != d.parent:
+        out.append(str(d))
+        d = d.parent
+    return out
+
+
+def remove_empty_dirs(dirs):
+    """Remove folders Kate++ created, deepest first, but only while they are empty."""
+    for d in dirs or ():
+        try:
+            Path(d).rmdir()
+        except OSError:
+            break   # not empty (or already gone): leave it and its parents alone
+
+
 def atomic_write(path: Path, text: str, mode=None):
     path.parent.mkdir(parents=True, exist_ok=True)
     if mode is None:
@@ -255,7 +274,7 @@ DEFAULTS = {
               "window-colors": "match"},
     "editor": {"font": "auto", "font-size": "11", "line-spacing": "1.15", "minimap": "true",
                "ligatures": "true", "smart-highlighting": "true", "auto-save": "off",
-               "breadcrumbs": "true"},
+               "breadcrumbs": "true", "format-on-save": "false"},
 }
 
 
@@ -276,6 +295,18 @@ class Config:
 
     def flag(self, section, key):
         return self.get(section, key).lower() in ("1", "true", "yes", "on")
+
+    def strict_flag(self, section, key):
+        """Like flag(), but a value that is neither true nor false (e.g. a typo such as
+        'tru') warns and falls back to the default instead of silently meaning false."""
+        value = self.get(section, key).lower()
+        if value in ("1", "true", "yes", "on"):
+            return True
+        if value in ("0", "false", "no", "off"):
+            return False
+        default = DEFAULTS[section][key]
+        warn(f"[{section}] {key} = {value!r} isn't true or false; using {default}")
+        return default.lower() in ("1", "true", "yes", "on")
 
 
 def load_config() -> Config:
@@ -453,7 +484,13 @@ def load_state() -> dict:
 
 
 def save_state(state: dict):
-    atomic_write(STATE_FILE, json.dumps(state, indent=2) + "\n", 0o644)
+    # owner-only: it can hold copies of private settings (e.g. a 0600 formatting file)
+    atomic_write(STATE_FILE, json.dumps(state, indent=2) + "\n", 0o600)
+
+
+def installed(state: dict) -> bool:
+    """A Kate++ install is recorded, not just the leftovers of an interrupted uninstall."""
+    return bool(state) and not state.get("uninstall_pending")
 
 
 # ----------------------------------------------------------------- KConfig rc files
