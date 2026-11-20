@@ -14,6 +14,8 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "lib"))
+from kpp import core  # noqa: E402
 TOUR = [("caelestia", "Caelestia · follows your wallpaper"), ("rose-pine", "Rosé Pine"),
         ("kanagawa-wave", "Kanagawa"), ("everforest-dark", "Everforest"),
         ("night-owl", "Night Owl"), ("synthwave-84", "Synthwave '84"), ("light", "Kate++ Light")]
@@ -71,7 +73,7 @@ def main():
             args += ["-delay", str(d), f]
         # one palette per frame (themes differ a lot), then let ImageMagick store only changes
         magick(*args, "-dither", "None", "-colors", "160", "-layers", "Optimize", "-loop", "0", out)
-    print(f"wrote {out}")
+    core.info(f"wrote {out}")
 
 
 if __name__ == "__main__":

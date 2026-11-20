@@ -89,10 +89,12 @@ On a Caelestia + Hyprland desktop you can turn on a hotkey (<kbd>Super</kbd>+<kb
 ### 🔤 Languages, A to Z
 Just like Notepad++: hover a letter, pick a language. Every language Kate knows (about 400) is in there, and the rarer ones stay one click away under *All Languages*. Works for unsaved drafts too.
 
-<sub>New languages from Kate updates show up by themselves.</sub>
+<sub>New languages from Kate updates show up by themselves. The A–Z list comes from Kate's `ksyntaxhighlighter6` tool; where a distro leaves it out, the menu is Kate's own list grouped by kind.</sub>
 
 ### ✨ One-key tidy-up
-<kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd> tidies the whole file with the right tool for the language: prettier, ruff, jq, clang-format, shfmt and [more](#-prettify).
+<kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd> tidies the whole file with the right tool for the language: prettier, ruff, jq, clang-format, shfmt and [all supported formatters](#-prettify).
+
+<sub>On Kate 24.08, clang-format only tidies the lines changed since the last Git commit.</sub>
 
 ### 🗂️ Panels with names
 Function list, folder, preview, snippets: the side buttons say what they are, so there's no guessing which icon is which.

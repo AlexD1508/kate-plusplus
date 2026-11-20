@@ -8,8 +8,12 @@ Caelestia colour scheme are copied in, so the shots look like your desktop. Hypr
 
     python3 tools/readme-media.py OUT_DIR [scene ...]
 
-Scenes: stock, kpp, languages, panels, theme-<source> (e.g. theme-dark, theme-rose-pine).
-Then build the animations with tools/make-animations.py.
+Scenes: stock, kpp, languages, prettify, panels, theme-<source> (e.g. theme-dark,
+theme-rose-pine). Then build the animations with tools/make-before-after.py (stock → Kate++)
+and tools/make-crossfade.py (theme tour, Prettify).
+
+The demo files go to /tmp/Notes (a short path in Kate's breadcrumbs). The tool creates that
+folder itself and refuses to run if it already exists, so it never deletes anything of yours.
 """
 from __future__ import annotations
 
@@ -24,6 +28,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 HOME = Path.home()
+sys.path.insert(0, str(ROOT / "lib"))
+from kpp import core  # noqa: E402
 
 NOTES_PY = '''import json, os
 from dataclasses import dataclass
@@ -127,9 +133,7 @@ def sandbox(work: Path, scene: str, kpp: bool, theme_source: str | None):
         elif src.is_file():
             dst.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(src, dst)
-    files = DEMO_DIR      # short, tidy path in the breadcrumbs: tmp › Notes
-    shutil.rmtree(files, ignore_errors=True)
-    files.mkdir()
+    files = DEMO_DIR      # created (and owned) by main(); every scene rewrites the demo files
     for name, text in DEMO.items():
         (files / name).write_text(text, encoding="utf-8")
     if kpp:
@@ -160,15 +164,20 @@ def first_run(home: Path):
               --method org.freedesktop.DBus.ListNames | grep -o "org.kde.kate-[0-9]*" | head -1) || true
         [[ -n $svc ]] && gdbus introspect --session --dest "$svc" \
               --object-path /kate/MainWindow_1/actions/file_quit >/dev/null 2>&1 && break
+        svc=
         sleep 0.5
     done
+    if [[ -z $svc ]]; then kill $pid 2>/dev/null; echo "Kate did not start" >&2; exit 1; fi
     sleep 2
-    gdbus call --session --dest "$svc" --object-path /kate/MainWindow_1/actions/file_quit \
-        --method org.qtproject.Qt.QAction.trigger >/dev/null || kill $pid
-    for _ in $(seq 40); do kill -0 $pid 2>/dev/null || break; sleep 0.5; done
-    kill $pid 2>/dev/null || true'''
+    if ! gdbus call --session --dest "$svc" --object-path /kate/MainWindow_1/actions/file_quit \
+            --method org.qtproject.Qt.QAction.trigger >/dev/null; then
+        kill $pid 2>/dev/null; echo "Kate did not quit" >&2; exit 1
+    fi
+    for _ in $(seq 40); do kill -0 $pid 2>/dev/null || exit 0; sleep 0.5; done
+    kill $pid; echo "Kate did not quit in time" >&2; exit 1'''
+    # a failure stops the scene: without the first-start layout the shot would be wrong
     sh("env", "-i", f"HOME={home}", "PATH=/usr/bin:/bin", "QT_QPA_PLATFORM=offscreen",
-       "dbus-run-session", "--", "bash", "-c", script, check=False)
+       "dbus-run-session", "--", "bash", "-c", script)
 
 
 def show_panels(home: Path, visible):
@@ -270,15 +279,18 @@ def scene(mon, work, name, out):
         shoot(mon, home, [d / "notes.py"], target)
     else:
         raise SystemExit(f"unknown scene {name}")
-    print(f"  {target}")
+    core.info(f"shot {target}")
 
 
 def main():
     if len(sys.argv) < 2:
         raise SystemExit(__doc__)
     out = Path(sys.argv[1]).resolve()
-    if DEMO_DIR.exists() and not (DEMO_DIR / "notes.py").exists():
-        raise SystemExit(f"{DEMO_DIR} exists and isn't ours; move it away first")
+    try:
+        DEMO_DIR.mkdir()   # ours from here on; never a folder that was already there
+    except FileExistsError:
+        raise SystemExit(f"{DEMO_DIR} already exists; move it away first "
+                         "(this tool only removes a folder it created itself)")
     out.mkdir(parents=True, exist_ok=True)
     scenes = sys.argv[2:] or ["stock", "kpp", "languages", "panels"]
     with tempfile.TemporaryDirectory(prefix="kpp-media-") as w, Monitor() as mon:
