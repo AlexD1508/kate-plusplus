@@ -1315,6 +1315,11 @@ def finish_pending_uninstall(kate, state):
     step("Kate's format-on-save setting restored; Kate++ removed")
 
 
+# commands that stay allowed while an uninstall is unfinished: they finish it, set Kate++ up
+# again (apply clears the marker), or don't touch Kate's settings
+PENDING_OK = {"uninstall", "install", "apply", "update", "doctor", "backup"}
+
+
 def do_uninstall(args):
     kate = need_kate()
     banner("Uninstall")
@@ -1470,6 +1475,12 @@ def main(argv=None):
             core.ensure_user_config(overrides)
         first = args.cmd == "install" and not core.installed(core.load_state())
         return do_apply(args, first_install=first)
+
+    if core.load_state().get("uninstall_pending") and not (
+            args.cmd in PENDING_OK or (args.cmd == "config" and args.print)):
+        # an unfinished uninstall: a write now would get records the retry doesn't undo
+        fail("An earlier uninstall couldn't finish. Run `kate-plusplus uninstall` again to finish it,\n"
+             "  or `kate-plusplus apply` to set Kate++ up again.")
 
     handlers = {"theme": do_theme, "backup": do_backup, "maintain": do_maintain, "restore": do_restore, "doctor": do_doctor,
                 "update": do_update, "uninstall": do_uninstall, "config": do_config}

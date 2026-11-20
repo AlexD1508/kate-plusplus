@@ -513,6 +513,8 @@ if [[ $EUID -ne 0 ]]; then
     grep -q "format-on-save setting couldn't be put back" <<<"$out" || die "unreadable formatting settings weren't reported"
     grep -q "$f" "$H/.local/state/kate-plusplus/state.json" || die "record of an unrestored formatting file was deleted"
     [[ $(stat -c %a "$H/.local/state/kate-plusplus/state.json") == 600 ]] || die "state.json (holding a settings copy) isn't owner-only"
+    env -i HOME="$H" PATH=/usr/bin:/bin KPP_TEST=1 ./bin/kate-plusplus theme >/dev/null 2>&1 \
+        && die "theme ran while an uninstall was unfinished (its changes would never be undone)"
     run uninstall --yes
     cmp -s "$root/format.orig" "$f" || die "retrying uninstall didn't restore the formatting settings"
     [[ -e $H/.local/state/kate-plusplus ]] && die "state left behind after a complete uninstall"
