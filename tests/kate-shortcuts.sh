@@ -90,7 +90,7 @@ for ap in m.parse(sys.argv[1]).getElementsByTagName("ActionProperties"):
 }
 props "$H/.local/share/kxmlgui5/kate/kateui.rc" | grep -q '^view_new_view=Ctrl+Alt+N$' || die "uninstall removed the user's shortcut"
 props "$H/.local/share/kxmlgui5/kate/kateui.rc" | grep -q '^file_quit=' && die "uninstall left Kate++ shortcuts behind"
-for f in katepart/katepart5ui.rc keyboardmacros/ui.rc; do
+for f in katepart/katepart5ui.rc keyboardmacros/ui.rc formatplugin/ui.rc; do
     [[ ! -f $H/.local/share/kxmlgui5/$f ]] || ! props "$H/.local/share/kxmlgui5/$f" | grep -q . || die "$f still has Kate++ shortcuts"
 done
 pass "uninstall removes only Kate++ shortcuts"
