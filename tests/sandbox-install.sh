@@ -365,7 +365,7 @@ env -i HOME="$H" PATH=/usr/bin:/bin KPP_TEST=1 PYTHONPATH=lib python3 - "$H/.loc
 import json, sys
 from kpp import cli, core
 p = sys.argv[1]; s = json.load(open(p)); records = s.pop("katerc_before")
-legacy = {f"{g}\t{k}" for g, k in cli.managed_keys()}
+legacy = {f"{g}\t{k}" for g, k in cli.legacy_keys()}   # what 1.0.x wrote
 core.merge_rc(core.XDG_CONFIG / "katerc", [(*rec.split("\t", 1), "@delete" if old is None else old)
                             for rec, old in records.items() if rec not in legacy])
 json.dump(s, open(p, "w"))
@@ -801,6 +801,31 @@ a, b = plugins(sys.argv[1]), plugins(sys.argv[2])
 assert b == {**a, "ktexteditorpreviewplugin": "false"}, (a, b)   # your later "off" stays
 PY
 grep -q '^Show text for left and right sidebar' "$H/.config/katerc" && die "uninstall left the side-panel labels setting"
+[[ -e $H/.local/state/kate-plusplus.lock ]] && die "uninstall left its lock file"
+# newer kate.ini keys are recorded from the live katerc, even when a pre-install backup exists
+H=$root/newer-keys; mkdir -p "$H/.config" "$H/.local/state/kate-plusplus"
+printf '[General]\nShow text for left and right sidebar=false\n' > "$H/.config/katerc"
+printf '[General]\nRecent Files Count=10\n' > "$H/.local/state/kate-plusplus/katerc.before-kate-plusplus"
+echo '{"version": "1.0.1"}' > "$H/.local/state/kate-plusplus/state.json"
+env -i HOME="$H" PATH=/usr/bin:/bin KPP_TEST=1 PYTHONPATH=lib python3 - <<'PY' || die "a newer key was recorded from the pre-install backup"
+from kpp import cli
+state = {"version": "1.0.1"}
+cli._init_records(state)
+cli.record_katerc(cli.core.detect_kate(), state, [("[General]", "Show text for left and right sidebar", "true")])
+rec = state["katerc_before"]["[General]\tShow text for left and right sidebar"]
+assert rec == "false", rec
+PY
+# the background job waits for a running uninstall (shared lock) and then stays out
+env -i HOME="$H" PATH=/usr/bin:/bin KPP_TEST=1 PYTHONPATH=lib python3 - <<'PY' || die "background job didn't wait for the lock"
+import subprocess, sys, time, os
+from kpp import core
+with core.exclusive():
+    t = time.time()
+    p = subprocess.Popen([sys.executable, "-c", "from kpp import core\nwith core.exclusive(): pass"], env=os.environ)
+    time.sleep(1.5)
+    assert p.poll() is None, "second pass didn't wait"
+p.wait(timeout=10)
+PY
 # a failed session write is retried on the next run (the recorded originals aren't "done")
 H=$root/plugins-retry; mkdir -p "$H/.local/share/kate/sessions"
 printf '[Kate Plugins]\nkatesnippetsplugin=false\n' > "$H/.local/share/kate/sessions/R.katesession"

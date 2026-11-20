@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import configparser
+import contextlib
 import json
 import os
 import re
@@ -121,6 +122,22 @@ def run(*cmd, check=False, quiet=True):
                               stderr=subprocess.PIPE if quiet else None)
     except FileNotFoundError:
         return subprocess.CompletedProcess(cmd, 127, "", "")
+
+
+LOCK_FILE = XDG_STATE / f"{APP}.lock"   # outside STATE_DIR, which uninstall removes
+
+
+@contextlib.contextmanager
+def exclusive():
+    """One Kate++ pass at a time between the background job and uninstall (waits)."""
+    import fcntl
+    LOCK_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with open(LOCK_FILE, "a") as f:
+        fcntl.flock(f, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(f, fcntl.LOCK_UN)
 
 
 def missing_dirs(path: Path) -> list:

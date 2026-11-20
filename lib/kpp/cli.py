@@ -324,7 +324,7 @@ def _init_records(state):
     if legacy and PRE_INSTALL.exists():
         # ColorScheme too (window colours write it), but it stays out of managed_keys() so
         # the record-less fallback never deletes a scheme the user picked
-        for group, key in managed_keys() + [(UI, "ColorScheme")]:
+        for group, key in legacy_keys() + [(UI, "ColorScheme")]:   # newer keys: live values
             k = f"{group}\t{key}"
             if k not in records:
                 records[k] = core.read_rc_value(PRE_INSTALL, group, key)
@@ -350,7 +350,7 @@ def record_katerc(kate, state, settings):
     state, without changing katerc yet."""
     _init_records(state)
     before = state["katerc_before"]
-    legacy = set(managed_keys())
+    legacy = set(legacy_keys())
     new = False
     for group, key, _ in settings:
         k = f"{group}\t{key}"
@@ -384,6 +384,13 @@ NEWER_KATE_INI_KEYS = {("[Kate Plugins]", "katesnippetsplugin"),
                        ("[General]", "Show text for left and right sidebar")}
 
 
+def legacy_keys():
+    """managed_keys() that older versions already wrote: their originals come from the
+    pre-install backup. Newer keys are recorded from the live katerc (a later change of the
+    user's must survive)."""
+    return [gk for gk in managed_keys() if gk not in NEWER_KATE_INI_KEYS]
+
+
 def remove_managed_katerc(kate, state=None):
     """Fallback without complete records or a backup: remove the settings older versions
     managed (their originals are unknown), and put back exactly the recorded originals of
@@ -392,7 +399,7 @@ def remove_managed_katerc(kate, state=None):
     no-ligatures value (a later own value stays), and the snippet repository entry is taken
     out by remove_snippets() (list surgery keeps repositories added since)."""
     r = "[KTextEditor Renderer]"
-    legacy = [gk for gk in managed_keys() if gk not in NEWER_KATE_INI_KEYS]
+    legacy = legacy_keys()
     changes = [(g, k, "@delete") for g, k in legacy]
     special = {f"{r}\tText Font Features", f"{SNIPPETS_GROUP}\t{SNIPPETS_KEY}"}
     old_keys = {f"{g}\t{k}" for g, k in legacy} | {f"{UI}\tColorScheme"} | special  # scheme: see do_uninstall
@@ -1096,19 +1103,21 @@ def do_maintain(args):
             do_backup(args)
         except Exception as e:  # noqa: BLE001 - background job: report and continue
             warn(f"snapshot failed: {e}")
-    try:   # sessions created since the last apply get Kate++'s plugins too (Kate must be closed)
-        state = core.load_state()
-        files = session_files(kate)
-        if (core.installed(state) and not core.kate_running(kate)
-                and plugins.pending(REPO, state, files)
-                and make_backup(kate, force=True, label="pre-plugins")):   # snapshot first, always
-            plugins.enable(REPO, state, files)
-    except Exception as e:  # noqa: BLE001 - background job: report and continue
-        warn(f"plugin check failed (will retry next run): {e}")
-    try:
-        language_menu(cfg, kate, quiet=True)
-    except Exception as e:  # noqa: BLE001 - e.g. Kate is rewriting its menu file right now
-        warn(f"Language menu check failed (will retry next run): {e}")
+    with core.exclusive():   # never in the middle of an uninstall
+        if not core.installed(core.load_state()):
+            return               # uninstalled (or unfinished) since this run started
+        try:   # sessions created since the last apply get Kate++'s plugins (Kate must be closed)
+            state = core.load_state()
+            files = session_files(kate)
+            if (not core.kate_running(kate) and plugins.pending(REPO, state, files)
+                    and make_backup(kate, force=True, label="pre-plugins")):   # snapshot first
+                plugins.enable(REPO, state, files)
+        except Exception as e:  # noqa: BLE001 - background job: report and continue
+            warn(f"plugin check failed (will retry next run): {e}")
+        try:
+            language_menu(cfg, kate, quiet=True)
+        except Exception as e:  # noqa: BLE001 - e.g. Kate is rewriting its menu file right now
+            warn(f"Language menu check failed (will retry next run): {e}")
 
 
 def do_backup(args):
@@ -1333,6 +1342,14 @@ PENDING_OK = {"uninstall", "install", "apply", "update", "doctor", "backup"}
 
 
 def do_uninstall(args):
+    with core.exclusive():   # waits for a running background pass, and keeps the next one out
+        try:
+            return _uninstall(args)
+        finally:   # a pass still waiting on it finds Kate++ uninstalled and stops
+            core.LOCK_FILE.unlink(missing_ok=True)
+
+
+def _uninstall(args):
     kate = need_kate()
     banner("Uninstall")
     if not args.yes and not ask("Remove Kate++ from this account? Your notes and tabs stay."):
