@@ -830,7 +830,7 @@ a, b = plugins(sys.argv[1]), plugins(sys.argv[2])
 assert b == {**a, "ktexteditorpreviewplugin": "false"}, (a, b)   # your later "off" stays
 PY
 grep -q '^Show text for left and right sidebar' "$H/.config/katerc" && die "uninstall left the side-panel labels setting"
-[[ -e $H/.local/state/kate-plusplus.lock ]] && die "uninstall left its lock file"
+[[ -n $(find "$H/.local/state" -maxdepth 1 -name '*kate-plusplus*' -print -quit) ]] && die "uninstall left Kate++ files in ~/.local/state"
 # newer kate.ini keys are recorded from the live katerc, even when a pre-install backup exists
 H=$root/newer-keys; mkdir -p "$H/.config" "$H/.local/state/kate-plusplus"
 printf '[General]\nShow text for left and right sidebar=false\n' > "$H/.config/katerc"
@@ -853,14 +853,12 @@ with core.exclusive():
     p = subprocess.Popen([sys.executable, "-c", "from kpp import core\nwith core.exclusive(): pass"], env=os.environ)
     time.sleep(1.5)
     assert p.poll() is None, "second pass didn't wait"
+    q = subprocess.Popen([sys.executable, "bin/kate-plusplus", "theme"], env=os.environ,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    time.sleep(1.5)
+    assert q.poll() is None, "theme didn't wait for the lock"
 p.wait(timeout=10)
-# a waiter that locked a lock file uninstall has since removed retries on the current one
-with core.exclusive():
-    p = subprocess.Popen([sys.executable, "-c", "from kpp import core\nwith core.exclusive(): open(core.LOCK_FILE.with_suffix('.got'), 'w')"], env=os.environ)
-    time.sleep(1)
-    core.LOCK_FILE.unlink()
-p.wait(timeout=10)
-assert core.LOCK_FILE.with_suffix(".got").exists() and core.LOCK_FILE.exists(), "waiter didn't retry on the new file"
+q.wait(timeout=60)
 PY
 # a failed session write is retried on the next run (the recorded originals aren't "done")
 H=$root/plugins-retry; mkdir -p "$H/.local/share/kate/sessions"

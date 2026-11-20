@@ -1012,15 +1012,21 @@ def do_pick_theme(args):
         setup_systemd(cfg, source)
     finally:
         core.QUIET = quiet
-    state = core.load_state()
-    if state:
-        state["theme_source"] = source
-        core.save_state(state)
+    with core.exclusive():   # only the save: the picker itself is interactive
+        state = core.load_state()
+        if state:
+            state["theme_source"] = source
+            core.save_state(state)
 
 
 def do_theme(args):
     if getattr(args, "pick", False):
         return do_pick_theme(args)
+    with core.exclusive():   # its state load … save must not interleave with another pass
+        return _theme(args)
+
+
+def _theme(args):
     kate = need_kate()
     cfg = core.load_config()
     profile = resolve_profile(cfg)
@@ -1356,10 +1362,7 @@ PENDING_OK = {"uninstall", "install", "apply", "update", "doctor", "backup"}
 
 def do_uninstall(args):
     with core.exclusive():   # waits for a running background pass, and keeps the next one out
-        try:
-            return _uninstall(args)
-        finally:   # a pass still waiting on it finds Kate++ uninstalled and stops
-            core.LOCK_FILE.unlink(missing_ok=True)
+        return _uninstall(args)
 
 
 def _uninstall(args):

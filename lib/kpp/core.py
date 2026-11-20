@@ -124,16 +124,14 @@ def run(*cmd, check=False, quiet=True):
         return subprocess.CompletedProcess(cmd, 127, "", "")
 
 
-LOCK_FILE = XDG_STATE / f"{APP}.lock"   # outside STATE_DIR, which uninstall removes
-
-
 _lock_depth = 0
 
 
 @contextlib.contextmanager
 def exclusive():
-    """One Kate++ pass at a time across apply, the background job and uninstall (waits).
-    Re-entrant within one process, e.g. the menu's apply after a config edit."""
+    """One Kate++ pass at a time across apply, theme, the background job and uninstall (waits).
+    It locks the XDG state folder itself (~/.local/state), so there is no lock file to create
+    or to clean up, and uninstall can't leave one behind. Re-entrant within one process."""
     global _lock_depth
     if _lock_depth:
         _lock_depth += 1
@@ -143,24 +141,18 @@ def exclusive():
             _lock_depth -= 1
         return
     import fcntl
-    while True:
-        LOCK_FILE.parent.mkdir(parents=True, exist_ok=True)
-        f = open(LOCK_FILE, "a")
-        fcntl.flock(f, fcntl.LOCK_EX)
-        try:   # flock locks the open file, not the name: uninstall may have replaced it
-            if os.fstat(f.fileno()).st_ino == os.stat(LOCK_FILE).st_ino:
-                break
-        except FileNotFoundError:
-            pass
-        fcntl.flock(f, fcntl.LOCK_UN)
-        f.close()
-    _lock_depth = 1
+    XDG_STATE.mkdir(parents=True, exist_ok=True)   # the standard XDG folder, never removed
+    fd = os.open(XDG_STATE, os.O_RDONLY | os.O_DIRECTORY)
     try:
-        yield
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        _lock_depth = 1
+        try:
+            yield
+        finally:
+            _lock_depth = 0
+            fcntl.flock(fd, fcntl.LOCK_UN)
     finally:
-        _lock_depth = 0
-        fcntl.flock(f, fcntl.LOCK_UN)
-        f.close()
+        os.close(fd)
 
 
 def missing_dirs(path: Path) -> list:
