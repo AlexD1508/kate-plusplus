@@ -15,7 +15,7 @@ from . import core
 
 ACTION = "format_document"
 MARK = "kate-plusplus"                 # on the toolbar entry Kate++ added
-CREATED = "kate-plusplus-created"      # on an <ActionProperties> / <Action> Kate++ had to create
+CREATED = "kate-plusplus-created"      # on an <ActionProperties> section Kate++ had to create
 OWNED = {"text": "Prettify", "icon": "tools-wizard"}   # attributes Kate++ sets on the action
 
 
@@ -39,6 +39,22 @@ def _toolbar(doc):
 def _entries(bar):
     return [n for n in bar.childNodes if n.nodeType == n.ELEMENT_NODE
             and n.tagName == "Action" and n.getAttribute("name") == ACTION]
+
+
+def finalize(kate):
+    """Last uninstall step (after the shortcut entries are gone): remove a section this module
+    had to create, once it is empty again."""
+    path = _file(kate)
+    if not path.exists():
+        return
+    try:
+        doc = minidom.parse(str(path))
+    except Exception:  # noqa: BLE001 - unreadable: leave it alone
+        return
+    props = _root_child(doc, "ActionProperties")
+    if props is not None and props.getAttribute(CREATED) == "true" and _empty(props, {CREATED}):
+        props.parentNode.removeChild(props)
+        _save(path, doc)
 
 
 def _empty(el, own_attrs) -> bool:
@@ -89,10 +105,12 @@ def ensure(kate) -> str:
         props.setAttribute(CREATED, "true")
         doc.documentElement.appendChild(props)
     action = next((a for a in props.getElementsByTagName("Action") if a.getAttribute("name") == ACTION), None)
-    if action is None:   # normally the shortcut entry exists already; else it's ours to remove
+    if action is None:
+        # normally Kate++'s shortcut entry is already here; if you removed it, the entry is
+        # re-created with the shortcut module's own marker, so a single owner removes it again
         action = doc.createElement("Action")
         action.setAttribute("name", ACTION)
-        action.setAttribute(CREATED, "true")
+        action.setAttribute(MARK, "true")
         props.appendChild(action)
     for attr, value in OWNED.items():          # the name also shows in Edit → "Prettify"
         if action.hasAttribute(_owner(attr)):
@@ -133,11 +151,5 @@ def remove(kate):
                         a.removeAttribute(attr)
                     a.removeAttribute(_owner(attr))
                     changed = True
-            if a.getAttribute(CREATED) == "true" and set(a.attributes.keys()) <= {"name", CREATED}:
-                props.removeChild(a)               # created by Kate++ and nothing of yours in it
-                changed = True
-        if props.getAttribute(CREATED) == "true" and _empty(props, {CREATED}):
-            props.parentNode.removeChild(props)
-            changed = True
     if changed:
         _save(path, doc)

@@ -1438,6 +1438,7 @@ def _uninstall(args):
     shortcuts.uninstall(kate, REPO, state)
     menus.remove(kate)
     shortcuts.finalize(kate, REPO, state)   # after menus: a section Kate++ created may be empty now
+    toolbar.finalize(kate)
     plugins.restore(state)
     languages.remove_script(kate)
     format_left = formatting.restore(kate, state)

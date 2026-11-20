@@ -1029,7 +1029,9 @@ for a in list(r.getElementsByTagName("Action")):
 open(sys.argv[1], "w").write(d.toxml())
 PY
 run maintain --quiet                                     # the background job adds it back, marked
-grep -q 'kate-plusplus-created="true"' "$FP" || die "re-created button entry isn't marked as Kate++'s"
+grep -Eq '<Action (kate-plusplus="true" name="format_document"|name="format_document" kate-plusplus="true")' "$FP" \
+    || die "re-created button entry isn't marked as Kate++'s"
+run apply --yes                                          # … and a later apply adds the shortcut to it
 run uninstall --yes
 python3 - "$root/sections-ui.orig" "$UI" "$root/button.orig" "$FP" <<'PY' || die "a GUI file without a shortcut section didn't come back exactly"
 import sys, xml.dom.minidom as m
@@ -1038,6 +1040,21 @@ def norm(f):
 for a, b in ((sys.argv[1], sys.argv[2]), (sys.argv[3], sys.argv[4])):
     assert norm(a) == norm(b), (b, norm(b))
 PY
-pass "GUI files without a shortcut section come back exactly (shared section, re-created entry)"
+pass "GUI files without a shortcut section come back exactly (shared section, re-created entry, apply in between)"
+# something of yours inside Kate++'s entry (a comment) survives uninstall
+H=$root/comment; mkdir -p "$H/.local/share/kxmlgui5/formatplugin"; FP=$H/.local/share/kxmlgui5/formatplugin/ui.rc
+cp "$root/button.orig" "$FP"
+run install --yes
+python3 - "$FP" <<'PY'
+import sys, xml.dom.minidom as m
+d = m.parse(sys.argv[1])
+a = next(a for a in d.getElementsByTagName("Action")
+         if a.parentNode.tagName == "ActionProperties" and a.getAttribute("name") == "format_document")
+a.appendChild(d.createComment(" my note "))
+open(sys.argv[1], "w").write(d.toxml())
+PY
+run uninstall --yes
+grep -q '<!-- my note -->' "$FP" || die "uninstall deleted a comment you added inside Kate++'s entry"
+pass "your own content inside a Kate++ entry survives uninstall"
 
 echo "All sandbox tests passed."

@@ -50,6 +50,11 @@ def _load_or_new(path: Path, component: str):
     return doc
 
 
+def _no_content(el) -> bool:
+    """No child elements, comments or text: nothing of yours inside."""
+    return not any(n.nodeType != n.TEXT_NODE or n.data.strip() for n in el.childNodes)
+
+
 def _only_ours(props) -> bool:
     """The <ActionProperties> Kate++ created, still exactly as created: no entries, comments,
     text or attributes besides scheme="Default"."""
@@ -124,7 +129,7 @@ def uninstall(kate, repo: Path, state: dict):
             if el.getAttribute(MARK) != "true" or el.getAttribute("name") not in managed:
                 continue
             old = info["actions"].get(el.getAttribute("name"))
-            if old is None and set(el.attributes.keys()) <= {"name", "shortcut", MARK}:
+            if old is None and set(el.attributes.keys()) <= {"name", "shortcut", MARK} and _no_content(el):
                 props.removeChild(el)
             elif old is None:   # Kate++ created it, but it now holds something of yours too
                 for attr in ("shortcut", MARK):
