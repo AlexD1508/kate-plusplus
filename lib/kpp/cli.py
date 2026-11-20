@@ -1014,6 +1014,8 @@ def do_pick_theme(args):
         core.QUIET = quiet
     with core.exclusive():   # only the save: the picker itself is interactive
         state = core.load_state()
+        if state.get("uninstall_pending"):   # an uninstall failed while the picker was open
+            refuse_pending()
         if state:
             state["theme_source"] = source
             core.save_state(state)
@@ -1023,6 +1025,8 @@ def do_theme(args):
     if getattr(args, "pick", False):
         return do_pick_theme(args)
     with core.exclusive():   # its state load … save must not interleave with another pass
+        if core.load_state().get("uninstall_pending"):   # re-checked now that we hold the lock
+            refuse_pending()
         return _theme(args)
 
 
@@ -1360,6 +1364,11 @@ def finish_pending_uninstall(kate, state):
 PENDING_OK = {"uninstall", "install", "apply", "update", "doctor", "backup"}
 
 
+def refuse_pending():
+    fail("An earlier uninstall couldn't finish. Run `kate-plusplus uninstall` again to finish it,\n"
+         "  or `kate-plusplus apply` to set Kate++ up again.")
+
+
 def do_uninstall(args):
     with core.exclusive():   # waits for a running background pass, and keeps the next one out
         return _uninstall(args)
@@ -1531,8 +1540,7 @@ def main(argv=None):
     if core.load_state().get("uninstall_pending") and not (
             args.cmd in PENDING_OK or (args.cmd == "config" and args.print)):
         # an unfinished uninstall: a write now would get records the retry doesn't undo
-        fail("An earlier uninstall couldn't finish. Run `kate-plusplus uninstall` again to finish it,\n"
-             "  or `kate-plusplus apply` to set Kate++ up again.")
+        refuse_pending()
 
     handlers = {"theme": do_theme, "backup": do_backup, "maintain": do_maintain, "restore": do_restore, "doctor": do_doctor,
                 "update": do_update, "uninstall": do_uninstall, "config": do_config}
