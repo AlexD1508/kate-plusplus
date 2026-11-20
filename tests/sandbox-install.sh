@@ -674,4 +674,30 @@ run uninstall --yes
 grep -q '^ColorScheme=Solarized$' "$H/.config/katerc" || die "uninstall lost the user's scheme"
 pass "upgrade without backup keeps the user's window scheme through uninstall"
 
+# --- plugins live in the session files: switched on once, a later "off" stays, restored exactly ---
+H=$root/plugins; S=$H/.local/share/kate/sessions; mkdir -p "$H/.config" "$S"
+printf '[Kate Plugins]\nkatesnippetsplugin=false\nkatefiletreeplugin=true\n\n[MainWindow0]\nKate-MDI-Sidebar-Visible=true\n' > "$S/Mine.katesession"
+cp "$S/Mine.katesession" "$root/plugins.orig"
+run install --yes
+for f in "$S/Mine.katesession" "$S/Notepad.katesession"; do
+    for p in katesymbolviewerplugin katefilebrowserplugin ktexteditorpreviewplugin katesnippetsplugin formatplugin; do
+        grep -qx "$p=true" "$f" || die "$p not switched on in $(basename "$f")"
+    done
+done
+sed -i 's/^ktexteditorpreviewplugin=true$/ktexteditorpreviewplugin=false/' "$S/Mine.katesession"   # you turn Preview off in Kate
+run apply --yes
+grep -qx 'ktexteditorpreviewplugin=false' "$S/Mine.katesession" || die "apply switched a plugin back on that the user turned off"
+grep -qx 'Show text for left and right sidebar=true' "$H/.config/katerc" || die "side-panel labels not switched on"
+run uninstall --yes
+python3 - "$root/plugins.orig" "$S/Mine.katesession" <<'PY' || die "session plugin settings not restored"
+import sys, configparser
+def plugins(f):
+    c = configparser.RawConfigParser(strict=False); c.optionxform = str; c.read(f)
+    return dict(c["Kate Plugins"]) if c.has_section("Kate Plugins") else {}
+a, b = plugins(sys.argv[1]), plugins(sys.argv[2])
+assert b == {**a, "ktexteditorpreviewplugin": "false"}, (a, b)   # your later "off" stays
+PY
+grep -q '^Show text for left and right sidebar' "$H/.config/katerc" && die "uninstall left the side-panel labels setting"
+pass "plugins switched on per session (once), a later off stays, uninstall restores them"
+
 echo "All sandbox tests passed."

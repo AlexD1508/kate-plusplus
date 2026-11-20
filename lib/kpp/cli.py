@@ -14,7 +14,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from . import core, menus, ports, shortcuts, theme, window
+from . import core, menus, plugins, ports, shortcuts, theme, window
 from .core import (APP, BACKUP_DIR, BIN_LINK, CAELESTIA_SCHEME, DIM, BOLD, RESET, ACCENT,
                    GREEN, YELLOW, RED, KDEGLOBALS, REPO, STATE_DIR, USER_CONFIG, VERSION,
                    XDG_CONFIG, XDG_DATA, banner, info, section, step, warn, fail, ask, have, run)
@@ -369,7 +369,8 @@ def restore_katerc(kate, state) -> bool:
 
 # config/kate.ini keys that versions without per-key records never wrote: the record-less
 # fallback must not delete them (a user may have set them), it puts back their records instead
-NEWER_KATE_INI_KEYS = {("[Kate Plugins]", "katesnippetsplugin")}
+NEWER_KATE_INI_KEYS = {("[Kate Plugins]", "katesnippetsplugin"),
+                       ("[General]", "Show text for left and right sidebar")}
 
 
 def remove_managed_katerc(kate, state=None):
@@ -906,6 +907,8 @@ def do_apply(args, first_install=False):
     language_menu(cfg, kate)
     install_snippets(kate, state)
     ensure_sessions(kate)
+    plugins.enable(REPO, state, session_files(kate))
+    step("Panels: function list, folder, preview, snippets, bookmarks (labelled side buttons)")
     source = resolve_theme_source(cfg, profile)
     theme_name = build_themes(cfg, kate, source)
     kate_settings(cfg, kate, theme_name, state)
@@ -1079,6 +1082,12 @@ def do_maintain(args):
             do_backup(args)
         except Exception as e:  # noqa: BLE001 - background job: report and continue
             warn(f"snapshot failed: {e}")
+    try:   # sessions created since the last apply get Kate++'s plugins too (Kate must be closed)
+        state = core.load_state()
+        if state and not state.get("uninstall_pending") and not core.kate_running(kate):
+            plugins.enable(REPO, state, session_files(kate))
+    except Exception as e:  # noqa: BLE001 - background job: report and continue
+        warn(f"plugin check failed (will retry next run): {e}")
     try:
         language_menu(cfg, kate, quiet=True)
     except Exception as e:  # noqa: BLE001 - e.g. Kate is rewriting its menu file right now
@@ -1294,6 +1303,7 @@ def do_uninstall(args):
     restore_default_editor(state)
     shortcuts.uninstall(kate, REPO, state)
     menus.remove(kate)
+    plugins.restore(state)
     (kate.data / "katepart5/script/commands/kate-plusplus.js").unlink(missing_ok=True)
     for f in (kate.data / "org.kde.syntax-highlighting/themes").glob(f"{APP}-*.theme"):
         f.unlink()

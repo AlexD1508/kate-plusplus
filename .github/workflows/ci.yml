@@ -71,3 +71,5 @@ jobs:
         run: bash tests/picker-tty.sh
       - name: Shortcuts work in a running Kate (defaults intact, overrides applied)
         run: bash tests/kate-shortcuts.sh
+      - name: Kate++'s plugins load in a running Kate
+        run: bash tests/kate-plugins.sh
