@@ -10,6 +10,8 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "lib"))
+from kpp import core  # noqa: E402
 W, H = 1280, 720          # output size
 STEPS = 28                # frames per wipe
 HOLD = 22                 # frames to hold each side (at 20 fps)
@@ -65,7 +67,7 @@ def main():
                         "-vf", "palettegen=max_colors=192:stats_mode=diff", str(palette)], check=True)
         subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-framerate", "20", "-i", pattern, "-i", str(palette),
                         "-lavfi", "paletteuse=dither=sierra2_4a:diff_mode=rectangle", "-loop", "0", str(out)], check=True)
-    print(f"wrote {out}")
+    core.info(f"wrote {out}")
 
 
 if __name__ == "__main__":

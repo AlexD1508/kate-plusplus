@@ -13,7 +13,7 @@ import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION = "1.0.1"
+VERSION = "1.1.0"
 APP = "kate-plusplus"
 REPO = Path(__file__).resolve().parents[2]
 HOME = Path.home()

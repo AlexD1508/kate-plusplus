@@ -26,7 +26,7 @@ jobs:
       - name: Pyflakes
         run: pipx run pyflakes lib/kpp bin/kate-plusplus tools
       - name: ShellCheck
-        run: shellcheck install.sh tests/*.sh tools/screenshot-kate.sh
+        run: shellcheck install.sh tests/*.sh
       - name: Theme picker unit tests
         run: python3 -m unittest tests/test_picker.py
       - name: Notepad++ Tools (JavaScript)

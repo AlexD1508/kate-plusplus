@@ -6,6 +6,8 @@ All notable changes to Kate++ are listed here. The format follows
 
 ## [Unreleased]
 
+## [1.1.0] — 2026-11-20
+
 ### Added
 - **Language menu** on the menu bar, like Notepad++: A–Z submenus (hover **J** for Java,
   JavaScript, JSON, …) with every language Kate knows, and Kate's grouped list as *All
@@ -57,6 +59,8 @@ All notable changes to Kate++ are listed here. The format follows
   (with their comments), so new settings show up in `kate-plusplus config`.
 
 ### Changed
+- README: new screenshots and animations (stock → Kate++, a theme tour, the A–Z Language
+  menu and Prettify), shot with real, sandboxed Kate windows by `tools/readme-media.py`.
 - Kate's format-on-save (on by default in Kate) is turned off unless you set
   `[editor] format-on-save = true`; uninstall restores your previous setting exactly. If the
   Format plugin's `configPath` is a relative path (Kate doesn't expand `~` there either),
@@ -117,5 +121,7 @@ First release.
   doctor, update, uninstall.
 - Native and Flatpak Kate support; one-line installer; AUR package.
 
+[Unreleased]: https://github.com/AlexD1508/kate-plusplus/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/AlexD1508/kate-plusplus/releases/tag/v1.1.0
 [1.0.1]: https://github.com/AlexD1508/kate-plusplus/releases/tag/v1.0.1
 [1.0.0]: https://github.com/AlexD1508/kate-plusplus/releases/tag/v1.0.0
