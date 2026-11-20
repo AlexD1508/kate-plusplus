@@ -39,7 +39,7 @@ def _menubar(doc):
 
 def _save(path, doc):
     text = doc.toprettyxml(indent=" ")
-    core.atomic_write(path, "\n".join(l for l in text.splitlines() if l.strip()) + "\n", 0o644)
+    core.atomic_write(path.resolve(), "\n".join(l for l in text.splitlines() if l.strip()) + "\n")   # symlinks stay
 
 
 def _top_entries(bar):

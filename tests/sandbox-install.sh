@@ -974,5 +974,26 @@ a, b = norm(sys.argv[1]), norm(sys.argv[2])
 assert a == b, (a, b)
 PY
 pass "Prettify button: added to Kate's toolbar, switchable, removed exactly on uninstall"
+# your own name for the button survives apply and uninstall; a typo in the option warns
+# and keeps the button; a symlinked GUI file (dotfiles) stays a symlink
+H=$root/button2; mkdir -p "$H/.local/share/kxmlgui5/formatplugin" "$H/dotfiles"
+cp "$root/button.orig" "$H/dotfiles/ui.rc"
+ln -s "$H/dotfiles/ui.rc" "$H/.local/share/kxmlgui5/formatplugin/ui.rc"
+FP=$H/.local/share/kxmlgui5/formatplugin/ui.rc
+run install --yes
+[[ -L $FP ]] || die "install replaced a symlinked plugin GUI file with a plain file"
+grep -q 'text="Prettify"' "$H/dotfiles/ui.rc" || die "button not written through the symlink"
+sed -i 's/text="Prettify"/text="Tidy"/' "$H/dotfiles/ui.rc"
+sed -i 's/^prettify-button = true/prettify-button = tru/' "$H/.config/kate-plusplus/config.ini"
+out=$(env -i HOME="$H" PATH=/usr/bin:/bin KPP_TEST=1 ./bin/kate-plusplus apply --yes 2>&1)
+grep -q "prettify-button = 'tru' isn't true or false" <<<"$out" || die "a typo in prettify-button didn't warn"
+grep -Eq '<Action (name="format_document" kate-plusplus="true"|kate-plusplus="true" name="format_document")/>' "$FP" \
+    || die "a typo in prettify-button removed the button"
+grep -q 'text="Tidy"' "$FP" || die "apply overwrote the user's own name for the button"
+run uninstall --yes
+[[ -L $FP ]] || die "uninstall replaced the symlink"
+grep -q 'text="Tidy"' "$FP" || die "uninstall removed the user's own name for the button"
+grep -q 'icon="tools-wizard"' "$FP" && die "uninstall left Kate++'s icon"
+pass "Prettify button: your own name stays, typos warn, symlinked GUI files stay symlinks"
 
 echo "All sandbox tests passed."

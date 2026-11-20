@@ -15,9 +15,11 @@ from . import core
 
 ACTION = "format_document"
 MARK = "kate-plusplus"                 # on the toolbar entry Kate++ added
-LABEL_MARK = "kate-plusplus-label"     # on the action whose text/icon Kate++ set
-TEXT = "Prettify"
-ICON = "tools-wizard"
+OWNED = {"text": "Prettify", "icon": "tools-wizard"}   # attributes Kate++ sets on the action
+
+
+def _owner(attr):
+    return f"kate-plusplus-{attr}"     # present while the attribute is Kate++'s own value
 
 
 def _file(kate):
@@ -43,7 +45,8 @@ def _pretty(doc):
 
 
 def _save(path, doc):
-    core.atomic_write(path, _pretty(doc) + "\n", 0o644)
+    # through a symlink (e.g. a dotfiles repo) to its target, keeping the link and the mode
+    core.atomic_write(path.resolve(), _pretty(doc) + "\n")
 
 
 def status(kate) -> str:
@@ -81,10 +84,13 @@ def ensure(kate) -> str:
         action = doc.createElement("Action")
         action.setAttribute("name", ACTION)
         props.appendChild(action)
-    if action.getAttribute(LABEL_MARK) == "true" or not (action.hasAttribute("text") or action.hasAttribute("icon")):
-        action.setAttribute("text", TEXT)     # also the name in Edit → so both read "Prettify"
-        action.setAttribute("icon", ICON)
-        action.setAttribute(LABEL_MARK, "true")
+    for attr, value in OWNED.items():          # the name also shows in Edit → "Prettify"
+        if action.hasAttribute(_owner(attr)):
+            if action.getAttribute(attr) != value:   # changed by you since: yours from now on
+                action.removeAttribute(_owner(attr))
+        elif not action.hasAttribute(attr):
+            action.setAttribute(attr, value)
+            action.setAttribute(_owner(attr), "true")
     if _pretty(doc) != _pretty(minidom.parseString(original)):
         _save(path, doc)
     return "present"
@@ -109,10 +115,13 @@ def remove(kate):
     props = _root_child(doc, "ActionProperties")
     if props is not None:
         for a in props.getElementsByTagName("Action"):
-            if a.getAttribute("name") == ACTION and a.getAttribute(LABEL_MARK) == "true":
-                for attr in ("text", "icon", LABEL_MARK):
-                    if a.hasAttribute(attr):
+            if a.getAttribute("name") != ACTION:
+                continue
+            for attr, value in OWNED.items():
+                if a.hasAttribute(_owner(attr)):
+                    if a.getAttribute(attr) == value:   # still Kate++'s: take it out again
                         a.removeAttribute(attr)
-                changed = True
+                    a.removeAttribute(_owner(attr))
+                    changed = True
     if changed:
         _save(path, doc)

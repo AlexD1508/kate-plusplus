@@ -228,7 +228,7 @@ def setup_formatting(cfg, kate, state):
 
 
 def prettify_button(cfg, kate, *, quiet=False):
-    if not cfg.flag("features", "prettify-button"):
+    if not cfg.strict_flag("features", "prettify-button"):
         toolbar.remove(kate)
         return
     st = toolbar.ensure(kate)
@@ -1292,7 +1292,7 @@ def do_doctor(args):
             "present": "Language menu on the menu bar",
             "missing": "Language menu missing (Kate was updated?) → kate-plusplus apply",
             "pending": "Language menu appears after Kate's first start"}[st])
-    if cfg.flag("features", "prettify-button"):
+    if cfg.strict_flag("features", "prettify-button"):
         st = toolbar.status(kate)
         {"present": ok, "missing": bad, "pending": meh}[st]({
             "present": "Prettify button on the toolbar",

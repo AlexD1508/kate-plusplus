@@ -50,6 +50,14 @@ def _load_or_new(path: Path, component: str):
     return doc
 
 
+def _only_ours(props) -> bool:
+    """The <ActionProperties> Kate++ created, still exactly as created: no entries, comments,
+    text or attributes besides scheme="Default"."""
+    if any(n.nodeType != n.TEXT_NODE or n.data.strip() for n in props.childNodes):
+        return False
+    return dict(props.attributes.items()) in ({}, {"scheme": "Default"})
+
+
 def _has_action_properties(doc):
     root = doc.documentElement
     return any(el.parentNode is root for el in root.getElementsByTagName("ActionProperties"))
@@ -69,7 +77,7 @@ def _action_properties(doc):
 def _save(path: Path, doc):
     text = doc.toprettyxml(indent=" ")
     text = "\n".join(line for line in text.splitlines() if line.strip()) + "\n"
-    core.atomic_write(path, text, 0o644)
+    core.atomic_write(path.resolve(), text)   # a symlinked file stays a symlink
 
 
 def install(kate, repo: Path, state: dict):
@@ -104,24 +112,29 @@ def install(kate, repo: Path, state: dict):
 
 def uninstall(kate, repo: Path, state: dict):
     before = state.get("shortcuts_before", {})
-    for component, file, _ in overrides(repo):
+    for component, file, actions in overrides(repo):
         path = _target(kate, component, file)
+        managed = {name for name, _ in actions}   # other Kate++ entries (labels) aren't ours here
         info = before.get(f"{component}/{file}", {"existed": True, "actions": {}})
         if not path.exists():
             continue
         doc = _load_or_new(path, component)
         props = _action_properties(doc)
         for el in list(props.getElementsByTagName("Action")):
-            if el.getAttribute(MARK) != "true":
+            if el.getAttribute(MARK) != "true" or el.getAttribute("name") not in managed:
                 continue
             old = info["actions"].get(el.getAttribute("name"))
-            if old is None:
+            if old is None and set(el.attributes.keys()) <= {"name", "shortcut", MARK}:
                 props.removeChild(el)
+            elif old is None:   # Kate++ created it, but it now holds something of yours too
+                for attr in ("shortcut", MARK):
+                    if el.hasAttribute(attr):
+                        el.removeAttribute(attr)
             else:
                 el.setAttribute("shortcut", old)
                 el.removeAttribute(MARK)
         user_entries = [a for a in props.getElementsByTagName("Action") if a.getAttribute(MARK) != "true"]
-        if info.get("props_created") and not [n for n in props.childNodes if n.nodeType == n.ELEMENT_NODE]:
+        if info.get("props_created") and _only_ours(props):
             props.parentNode.removeChild(props)
         if not info.get("existed") and not user_entries:
             path.unlink()      # Kate++ created it and nothing of the user's is in it
