@@ -892,6 +892,19 @@ assert core.read_rc_value(f, "[Kate Plugins]", "katesnippetsplugin") == "true"
 assert state["plugins_before"][str(f)]["katesnippetsplugin"] == "false", "original baseline lost"
 assert not plugins.pending(core.REPO, state, [f])
 PY
+# the full-backup uninstall path keeps a newer key's live value from before the upgrade
+H=$root/newer-backup; mkdir -p "$H/.config"
+printf '[General]\nRecent Files Count=10\n' > "$H/.config/katerc"
+run install --yes                                       # the backup has no sidebar-label key
+python3 - "$H/.local/state/kate-plusplus/state.json" <<'PY'
+import json, sys   # as if the user had set the key to false before upgrading to this version
+p = sys.argv[1]; s = json.load(open(p))
+s["katerc_before"]["[General]\tShow text for left and right sidebar"] = "false"; json.dump(s, open(p, "w"))
+PY
+run uninstall --yes                                      # --yes: restores the full backup
+grep -qx 'Show text for left and right sidebar=false' "$H/.config/katerc" \
+    || die "full-backup uninstall lost a newer key's recorded value"
+grep -qx 'Recent Files Count=10' "$H/.config/katerc" || die "full-backup uninstall lost the backup"
 pass "plugins switched on per session (once), a later off stays, a failed write is retried, uninstall restores them"
 
 echo "All sandbox tests passed."

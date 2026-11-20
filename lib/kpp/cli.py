@@ -846,9 +846,10 @@ def setup_systemd(cfg, source):
             warn("No systemd user session: automatic backups are off (run `kate-plusplus backup` yourself)")
         return
     wanted = []
-    if cfg.flag("features", "backups") or cfg.flag("features", "language-menu"):
-        install_unit("kate-plusplus-backup.service", None)
-        wanted.append(install_unit("kate-plusplus-backup.timer", "kate-plusplus-backup.timer"))
+    # always: besides snapshots and the Language menu, the job switches Kate++'s plugins on in
+    # sessions created later (do_maintain does only what's enabled)
+    install_unit("kate-plusplus-backup.service", None)
+    wanted.append(install_unit("kate-plusplus-backup.timer", "kate-plusplus-backup.timer"))
     watch = {"caelestia": CAELESTIA_SCHEME, "plasma": KDEGLOBALS}.get(source)
     if watch:
         install_unit("kate-plusplus-theme.service", None)
@@ -1293,8 +1294,7 @@ def do_doctor(args):
             (ok if bound else meh)(f"Notepad overlay {state['overlay_hotkey']}"
                                    + ("" if bound else " (not bound yet; reload Hyprland)"))
     if core.has_systemd_user():
-        for unit, want in (("kate-plusplus-backup.timer", cfg.flag("features", "backups")
-                            or cfg.flag("features", "language-menu")),
+        for unit, want in (("kate-plusplus-backup.timer", True),   # always installed
                            ("kate-plusplus-theme.path", src in ("caelestia", "plasma"))):
             active = run("systemctl", "--user", "is-active", unit).stdout.strip() == "active"
             if want:
@@ -1405,6 +1405,13 @@ def _uninstall(args):
     repos_now = core.read_rc_value(kate.katerc, SNIPPETS_GROUP, SNIPPETS_KEY)
     if PRE_INSTALL.exists() and (args.yes or ask("Put your Kate settings back to how they were before Kate++?")):
         shutil.copy2(PRE_INSTALL, kate.katerc)
+        # keys only newer versions write were recorded from the live katerc, which may be newer
+        # than the backup (a value set after installing 1.0.x): put those records back on top
+        records = state.get("katerc_before", {})
+        newer = [(g, k, "@delete" if records[f"{g}\t{k}"] is None else records[f"{g}\t{k}"])
+                 for g, k in sorted(NEWER_KATE_INI_KEYS) if f"{g}\t{k}" in records]
+        if newer:
+            core.merge_rc(kate.katerc, newer)
         step("Original Kate settings restored")
     elif restore_katerc(kate, state):  # exactly what each key was before Kate++
         step("Your previous Kate settings restored")
