@@ -860,11 +860,12 @@ with core.exclusive():
 p.wait(timeout=10)
 q.wait(timeout=60)
 # an uninstall that became unfinished while theme waited: theme must notice it under the lock
-st = core.load_state(); st["uninstall_pending"] = True; core.save_state(st)
 with core.exclusive():
     q = subprocess.Popen([sys.executable, "-c", "import sys; sys.argv=['kate-plusplus','theme']\nfrom kpp import cli\ncli.do_theme(type('A',(),{'pick':False})())"],
                          env=os.environ, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-    time.sleep(1)
+    time.sleep(1.5)
+    assert q.poll() is None, "theme didn't wait for the lock"
+    st = core.load_state(); st["uninstall_pending"] = True; core.save_state(st)   # fails meanwhile
 out = q.communicate(timeout=60)[0]
 assert q.returncode != 0 and "uninstall couldn't finish" in out, ("theme ran although the uninstall was unfinished", out)
 st.pop("uninstall_pending"); core.save_state(st)

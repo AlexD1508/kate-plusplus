@@ -1000,22 +1000,24 @@ def do_pick_theme(args):
     if chosen is None:
         info("No change.")
         return
-    core.set_user_config({("theme", "source"): chosen.source})
-    step(f"Theme set to {chosen.label}  {DIM}(source = {chosen.source}){RESET}")
-    args.pick = False
-    do_theme(args)
-    # keep the colour watcher in step with the new source (Caelestia/Plasma follow live changes)
-    cfg = core.load_config()
-    source = resolve_theme_source(cfg, resolve_profile(cfg))
-    quiet, core.QUIET = core.QUIET, True
-    try:
-        setup_systemd(cfg, source)
-    finally:
-        core.QUIET = quiet
-    with core.exclusive():   # only the save: the picker itself is interactive
-        state = core.load_state()
-        if state.get("uninstall_pending"):   # an uninstall failed while the picker was open
+    # everything after the (interactive) pick runs under the lock, after the pending check,
+    # so an uninstall that failed while the picker was open can't get new writes
+    with core.exclusive():
+        if core.load_state().get("uninstall_pending"):
             refuse_pending()
+        core.set_user_config({("theme", "source"): chosen.source})
+        step(f"Theme set to {chosen.label}  {DIM}(source = {chosen.source}){RESET}")
+        args.pick = False
+        do_theme(args)
+        # keep the colour watcher in step with the new source (Caelestia/Plasma follow live changes)
+        cfg = core.load_config()
+        source = resolve_theme_source(cfg, resolve_profile(cfg))
+        quiet, core.QUIET = core.QUIET, True
+        try:
+            setup_systemd(cfg, source)
+        finally:
+            core.QUIET = quiet
+        state = core.load_state()
         if state:
             state["theme_source"] = source
             core.save_state(state)
