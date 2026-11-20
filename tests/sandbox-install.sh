@@ -955,9 +955,16 @@ cat > "$FP" <<'XML'
 XML
 cp "$FP" "$root/button.orig"
 run install --yes
-grep -Eq '<Action (name="format_document" kate-plusplus="true"|kate-plusplus="true" name="format_document")/>' "$FP" || die "Prettify button not added to the toolbar"
-grep -q 'text="Prettify"' "$FP" || die "Prettify button has no name"
-grep -q 'icon="tools-wizard"' "$FP" || die "Prettify button has no icon"
+python3 - "$FP" <<'PY' || die "Prettify button not on the main toolbar with its name and icon"
+import sys, xml.dom.minidom as m
+root = m.parse(sys.argv[1]).documentElement
+kids = lambda tag: [n for n in root.childNodes if n.nodeType == 1 and n.tagName == tag]
+bar = next(t for t in kids("ToolBar") if t.getAttribute("name") == "mainToolBar")
+assert [a for a in bar.getElementsByTagName("Action")
+        if a.getAttribute("name") == "format_document" and a.getAttribute("kate-plusplus") == "true"], "no marked toolbar entry"
+a = next(a for a in kids("ActionProperties")[0].getElementsByTagName("Action") if a.getAttribute("name") == "format_document")
+assert (a.getAttribute("text"), a.getAttribute("icon")) == ("Prettify", "tools-wizard"), a.attributes.items()
+PY
 before=$(md5sum "$FP"); run apply --yes
 [[ $(md5sum "$FP") == "$before" ]] || die "re-apply rewrote an unchanged plugin GUI file"
 sed -i 's/^prettify-button = true/prettify-button = false/' "$H/.config/kate-plusplus/config.ini"
