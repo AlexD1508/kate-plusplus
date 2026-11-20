@@ -67,18 +67,30 @@ pass "overrides applied, Kate's defaults and the user's own shortcut intact"
 
 # Language menu: Kate writes its full menu file on first start, the background job adds the menu
 kpp maintain --quiet
-grep -q '<Action name="tools_highlighting" kate-plusplus="true"/>' "$H/.local/share/kxmlgui5/katepart/katepart5ui.rc" \
-    || die "Language menu was not added to the menu bar"
+UI=$H/.local/share/kxmlgui5/katepart/katepart5ui.rc
+grep -q 'kate-plusplus="true"' "$UI" || die "Language menu was not added to the menu bar"
 read_shortcuts file_close >/dev/null    # Kate starts again with the menu in place
-python3 - "$H/.local/share/kxmlgui5/katepart/katepart5ui.rc" <<'PY' || die "Kate dropped the Language menu"
+if command -v ksyntaxhighlighter6 >/dev/null || command -v ksyntaxhighlighter5 >/dev/null; then
+    WANT=az
+else
+    WANT=grouped
+fi
+python3 - "$UI" "$WANT" <<'PY' || die "Kate dropped the Language menu"
 import sys, xml.dom.minidom as m
 root = m.parse(sys.argv[1]).documentElement
 bar = next(n for n in root.childNodes if n.nodeType == 1 and n.tagName == "MenuBar")
-assert any(n.nodeType == 1 and n.tagName == "Action" and n.getAttribute("name") == "tools_highlighting"
-           for n in bar.childNodes), "tools_highlighting is not on the menu bar"
 props = next(n for n in root.childNodes if n.nodeType == 1 and n.tagName == "ActionProperties")
-assert any(a.getAttribute("name") == "tools_highlighting" and a.getAttribute("text") == "&Language"
-           for a in props.getElementsByTagName("Action")), "Language label missing"
+label = [a.getAttribute("text") for a in props.getElementsByTagName("Action") if a.getAttribute("name") == "tools_highlighting"]
+if sys.argv[2] == "az":
+    menu = [n for n in bar.childNodes if n.nodeType == 1 and n.getAttribute("name") == "kpp_language"]
+    assert menu, "A–Z Language menu is not on the menu bar"
+    acts = [a.getAttribute("name") for a in menu[0].getElementsByTagName("Action")]
+    assert "tools_scripts_kppLang_Java" in acts and "tools_highlighting" in acts, acts[:5]
+    assert label == ["All Languages"], label
+else:
+    assert any(n.nodeType == 1 and n.tagName == "Action" and n.getAttribute("name") == "tools_highlighting"
+               for n in bar.childNodes), "tools_highlighting is not on the menu bar"
+    assert label == ["&Language"], label
 PY
 pass "Language menu added after Kate's first start and kept by Kate"
 

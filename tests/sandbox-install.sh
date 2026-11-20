@@ -285,8 +285,34 @@ cat > "$H/.local/share/kxmlgui5/katepart/katepart5ui.rc" <<'XML'
  </ActionProperties>
 </gui>
 XML
+# an entry from an older Kate++ (the grouped list on the bar) must be replaced, not doubled
+sed -i 's|  <Menu name="settings">|  <Action name="tools_highlighting" kate-plusplus="true"/>\n  <Menu name="settings">|' \
+    "$H/.local/share/kxmlgui5/katepart/katepart5ui.rc"
 run install --yes
-grep -q 'text="&amp;Language"' "$H/.local/share/kxmlgui5/katepart/katepart5ui.rc" || die "Language menu not added"
+UI=$H/.local/share/kxmlgui5/katepart/katepart5ui.rc
+LJS=$H/.local/share/katepart5/script/commands/kate-plusplus-languages.js
+if command -v ksyntaxhighlighter6 >/dev/null || command -v ksyntaxhighlighter5 >/dev/null; then
+    python3 - "$UI" <<'PY' || die "A–Z Language menu not built"
+import sys, xml.dom.minidom as m
+root = m.parse(sys.argv[1]).documentElement
+bar = next(n for n in root.childNodes if n.nodeType == 1 and n.tagName == "MenuBar")
+menus = [n for n in bar.childNodes if n.nodeType == 1 and n.getAttribute("name") == "kpp_language"]
+assert len(menus) == 1, "A–Z menu missing or doubled"
+assert not [n for n in bar.childNodes if n.nodeType == 1 and n.tagName == "Action"], "old entry left on the bar"
+j = [n for n in menus[0].childNodes if n.nodeType == 1 and n.getAttribute("name") == "kpp_language_J"]
+names = [a.getAttribute("name") for a in j[0].getElementsByTagName("Action")]
+assert "tools_scripts_kppLang_Java" in names and "tools_scripts_kppLang_JSON" in names, names
+last = [n for n in menus[0].childNodes if n.nodeType == 1][-1]
+assert last.getAttribute("name") == "tools_highlighting", "All Languages entry missing at the bottom"
+PY
+    grep -q 'function kppLang_Java() { kppSetLanguage("Java"); }' "$LJS" || die "language script missing Java"
+    grep -q 'text="All Languages"' "$UI" || die "grouped list not labelled All Languages"
+    before=$(md5sum "$UI"); run apply --yes
+    [[ $(md5sum "$UI") == "$before" ]] || die "re-apply rewrote an unchanged menu file"
+else
+    grep -q 'text="&amp;Language"' "$UI" || die "Language menu not added"
+    [[ -e $LJS ]] && die "language script written although Kate's language list isn't available"
+fi
 sed -i 's/^language-menu = true/language-menu = false/' "$H/.config/kate-plusplus/config.ini"
 run apply --yes
 run uninstall --yes
@@ -294,14 +320,16 @@ python3 - "$H/.local/share/kxmlgui5/katepart/katepart5ui.rc" <<'PY' || die "the 
 import sys, xml.dom.minidom as m
 root = m.parse(sys.argv[1]).documentElement
 bar = next(n for n in root.childNodes if n.nodeType == 1 and n.tagName == "MenuBar")
-assert not any(n.nodeType == 1 and n.tagName == "Action" for n in bar.childNodes), "Kate++ entry left on the bar"
+assert not any(n.nodeType == 1 and (n.tagName == "Action" or n.getAttribute("name") == "kpp_language")
+               for n in bar.childNodes), "Kate++ entry left on the bar"
 a = [a for a in root.getElementsByTagName("Action") if a.parentNode.tagName == "ActionProperties"
      and a.getAttribute("name") == "tools_highlighting"]
 assert len(a) == 1, a
 assert a[0].getAttribute("text") == "My Highlighting" and a[0].getAttribute("shortcut") == "Ctrl+Alt+L"
 assert not [k for k in a[0].attributes.keys() if k.startswith("kate-plusplus")], a[0].attributes.keys()
 PY
-pass "Language menu: only Kate++'s own entries are removed, the user's label comes back"
+[[ -e $LJS ]] && die "uninstall left the language script"
+pass "Language menu: A–Z replaces the old entry, only Kate++'s own entries are removed, the user's label comes back"
 
 # --- a shortcut file Kate++ created keeps shortcuts the user added later ---
 H=$root/created; mkdir -p "$H"
