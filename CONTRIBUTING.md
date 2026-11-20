@@ -25,7 +25,9 @@ never patches it. Good contributions keep it that way.
 | `shortcuts/` | the Notepad++ shortcut scheme (per KDE component) |
 | `kate-scripts/` | the Notepad++ Tools (Kate JavaScript commands) |
 | `hyprland/`, `desktop/`, `systemd/` | overlay, launcher entry, timers |
-| `tools/make-gallery.py` | regenerates the README theme images |
+| `tools/make-gallery.py` | regenerates the README theme galleries |
+| `tools/readme-media.py` | shoots the README screenshots with real, sandboxed Kate windows (Hyprland) |
+| `tools/make-before-after.py`, `tools/make-crossfade.py` | build the README animations from those shots |
 | `packaging/aur/` | AUR PKGBUILD |
 
 ## Ground rules

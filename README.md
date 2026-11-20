@@ -21,6 +21,10 @@ The shortcuts your fingers already know. Colours that match your desktop.
 
 <sub>Stock Kate → Kate++ on a Caelestia desktop. Same files, same machine. <a href="assets/screenshot.png">Full-size screenshot</a></sub>
 
+<br>
+
+**[Install](#-install)** · **[A closer look](#-a-closer-look)** · **[Themes](#-themes)** · **[Shortcuts](#%EF%B8%8F-shortcuts)** · **[FAQ](#-faq)**
+
 </div>
 
 <br>
@@ -40,7 +44,7 @@ Close Kate with unsaved notes and **no save dialog pops up**. Next time you open
 
 ### ⌨️ Notepad++ shortcuts
 <kbd>Ctrl</kbd>+<kbd>D</kbd> duplicate line · <kbd>Ctrl</kbd>+<kbd>H</kbd> replace · <kbd>Ctrl</kbd>+<kbd>K</kbd> comment · <kbd>Ctrl</kbd>+<kbd>Q</kbd> toggle comment · <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd> / <kbd>P</kbd> record / play macro, and [more](#%EF%B8%8F-shortcuts).
-<br><sub>Installed as a switchable shortcut scheme: Kate's originals are one click away.</sub>
+<br><sub>Added on top of Kate's own keys: everything else works as before, and your own changes stay.</sub>
 
 </td>
 </tr>
@@ -62,7 +66,7 @@ A **harmonised** syntax theme: strings green, numbers orange, functions blue. Ea
 <td valign="top">
 
 ### 🗂️ The Notepad++ layout
-A **Language** menu on the menu bar (pick Java for a quick draft, close Kate, and it's still a Java tab weeks later), unlimited tabs with close buttons, double-click the tab bar for a new file, middle-click to close, **document map** (minimap), **breadcrumbs** above the text (folder › file, plus the function or class you're in when a language server is running; click to jump), **function list**, folder-as-workspace, Markdown preview, colour swatches, rainbow brackets.
+An **A–Z Language menu** on the menu bar (pick Java for a quick draft, close Kate, and it's still a Java tab weeks later), unlimited tabs, a **document map** (minimap), **breadcrumbs** above the text, and labelled side panels: **function list**, folder-as-workspace, Markdown preview, snippets and bookmarks. Plus colour swatches and rainbow brackets.
 
 </td>
 <td valign="top">
@@ -73,6 +77,36 @@ On a Caelestia + Hyprland desktop you can turn on a hotkey (<kbd>Super</kbd>+<kb
 </td>
 </tr>
 </table>
+
+<br>
+
+## 👀 A closer look
+
+<table>
+<tr>
+<td width="44%" valign="top">
+
+### 🔤 Languages, A to Z
+Just like Notepad++: hover a letter, pick a language. Every language Kate knows (about 400) is in there, and the rarer ones stay one click away under *All Languages*. Works for unsaved drafts too.
+
+<sub>New languages from Kate updates show up by themselves.</sub>
+
+### ✨ One-key tidy-up
+<kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd> tidies the whole file with the right tool for the language: prettier, ruff, jq, clang-format, shfmt and [more](#-prettify).
+
+### 🗂️ Panels with names
+Function list, folder, preview, snippets: the side buttons say what they are, so there's no guessing which icon is which.
+
+</td>
+<td width="56%" valign="top">
+
+<img src="assets/language-menu.png" alt="Kate++ Language menu: J opens Java, JavaScript, JSON and friends">
+
+</td>
+</tr>
+</table>
+
+<p align="center"><img src="assets/prettify.gif" width="760" alt="One long line of JSON becomes neatly indented with Ctrl+Alt+Shift+B"></p>
 
 <br>
 
@@ -135,6 +169,7 @@ curl -fsSL https://raw.githubusercontent.com/AlexD1508/kate-plusplus/main/instal
 |---|:---:|:---:|
 | Session memory, no save prompts | ✅ | ✅ |
 | Notepad++ shortcuts & tools | ✅ | ✅ |
+| A–Z Language menu, Prettify, labelled panels | ✅ | ✅ |
 | Tabs, document map, function list, macros | ✅ | ✅ |
 | Safety snapshots & one-command restore | ✅ | ✅ |
 | Kate as default text editor | ✅ | ✅ |
@@ -146,7 +181,11 @@ curl -fsSL https://raw.githubusercontent.com/AlexD1508/kate-plusplus/main/instal
 
 ## 🎨 Themes
 
-The theme engine keeps every token family on its own familiar hue, nudges it toward your accent, and renders it at matched brightness. Keywords take the accent itself, and the other colours keep their distance so nothing gets confused with a keyword. Every colour is contrast-checked against the background, so **no tweak can make code hard to read**.
+<p align="center"><img src="assets/theme-tour.gif" width="860" alt="Kate++ switching between Caelestia, Rosé Pine, Kanagawa, Everforest, Night Owl, Synthwave '84 and Kate++ Light"></p>
+
+<p align="center"><sub>The whole window follows the theme: menus, tabs, panels and status bar, not just the code.</sub></p>
+
+Kate++'s own themes keep every kind of token on its familiar hue (strings green, numbers orange, functions blue), nudge it toward your accent colour and check every colour's contrast, so **no tweak can make code hard to read**. With Caelestia or KDE Plasma they follow your desktop colours live.
 
 <p align="center"><img src="assets/themes.png" width="900" alt="Kate++ themes"></p>
 
@@ -160,9 +199,13 @@ background =               # e.g. #1a1b26
 syntax-colors = balanced   # soft | balanced | vivid
 ```
 
-**The whole window matches too.** Pick Rosé Pine or Dracula and Kate's menus, tabs, sidebars and status bar take on that theme's colours, not just the code. (For themes bundled with Kate, like Dracula, Kate++ reads their colours with `ksyntaxhighlighter6`; without it those keep your desktop's window colours.) With Caelestia or Plasma the window already follows your desktop. Set `window-colors = system` to opt out; a scheme you pick yourself in Kate (*Settings → Window Color Scheme*) after installing is never overwritten. (On first install Kate++ replaces Kate's previous window scheme so everything matches; uninstall puts it back.)
-
 <sub>`accent`, `background` and `syntax-colors` tune the adaptive Kate++ themes (`auto`, `caelestia`, `plasma`, `dark`, `light`). Named themes such as Rosé Pine or Dracula keep their designers' colours.</sub>
+
+<details>
+<summary><b>Window colours, in detail</b></summary>
+
+Pick Rosé Pine or Dracula and Kate's menus, tabs, sidebars and status bar take on that theme's colours. For themes bundled with Kate, like Dracula, Kate++ reads their colours with `ksyntaxhighlighter6`; without it those keep your desktop's window colours. With Caelestia or Plasma the window already follows your desktop. Set `window-colors = system` to opt out; a scheme you pick yourself in Kate (*Settings → Window Color Scheme*) after installing is never overwritten. On first install Kate++ replaces Kate's previous window scheme so everything matches; uninstall puts it back.
+</details>
 
 <p align="center"><img src="assets/intensity.png" width="900" alt="soft, balanced and vivid syntax colours"></p>
 
@@ -194,7 +237,9 @@ Then `kate-plusplus apply`. With Caelestia or Plasma as the source, the theme re
 
 <br>
 
-#### 🔬 Smarter highlighting
+## ✍️ Writing code
+
+### 🔬 Smarter highlighting
 
 With a language server installed, Kate++ turns on Kate's meaning-aware extras: **semantic highlighting** (parameters, types, constants and functions coloured by what they *are*, not just how they look), **inline hints** (parameter names and inferred types in soft grey), hover docs, signature help and error underlines. Each extra appears only where the server supports it: clangd and rust-analyzer offer all of them, while Kate's default Python server (pylsp) gives completion, hover, signatures and errors but no semantic colours or inline hints. For those in Python, install `basedpyright` and point Kate's *LSP Client → User Server Settings* at it:
 
@@ -206,11 +251,13 @@ With a language server installed, Kate++ turns on Kate's meaning-aware extras: *
 
 <sub>Language servers work on saved files (like in VS Code). Unsaved drafts still get regular highlighting, bracket matching, folding and word completion.</sub>
 
-#### ✨ Prettify
+### ✨ Prettify
 
 <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd> (Kate 24.08+; on older Kate open the command bar with <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>I</kbd> and run *Format Document*) tidies the whole file with the right tool for the language, through Kate's built-in Format plugin: **prettier** (JS, TS, CSS, HTML), **ruff** (Python), **jq** (JSON), **clang-format** (C/C++), **shfmt** (shell), **yamlfmt**, **rustfmt**, **gofmt**, **xmllint**. `kate-plusplus doctor` shows which you have and how to get the popular ones. Kate itself reformats on every save by default; Kate++ turns that off (`format-on-save = false` under `[editor]`) so files only change when you ask.
 
 <sub>For a file that's already saved on disk, Prettify **saves your changes first** (Kate formats the file on disk and applies the result), even if no formatter is installed for that language. JSON works everywhere without extra tools via Notepad++ Tools → Format JSON (<kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>M</kbd>). Some formatters (prettier, clang-format) pick their rules from the file name, so they work best on saved files. The formatter list above is for Kate 24.08 and newer. Older Kate differs: Python uses autopep8 until 24.02 (ruff from 24.05), shell formatting (shfmt) arrives in 24.08, and up to 24.08 clang-format reformats only the lines changed since the last Git commit; Kate 24.12 and newer format the whole C/C++ file.</sub>
+
+<br>
 
 <br>
 
@@ -274,6 +321,7 @@ If a font isn't installed, Kate++ says so (with the Arch package to install) and
 | Your original Kate settings | `~/.local/state/kate-plusplus/katerc.before-kate-plusplus` |
 | Themes | `~/.local/share/org.kde.syntax-highlighting/themes/kate-plusplus-*.theme` |
 | Tools script | `~/.local/share/katepart5/script/commands/kate-plusplus.js` |
+| Language menu script | `~/.local/share/katepart5/script/commands/kate-plusplus-languages.js` |
 
 Kate++ only ever changes the individual settings it manages. Everything else in your Kate config stays as it was.
 </details>
